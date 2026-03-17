@@ -29,9 +29,9 @@ pub fn render(env: &Env, size: Option<[usize; 2]>, noise_index: u64) -> Frame {
     draw_local_view(env, unit, local_rows, local_size, &mut local_canvas);
     apply_lighting(&mut local_canvas, local_size, env, noise_index);
     if env.player().sleeping() {
-        apply_sleep_tint(&mut local_canvas, local_size);
+        apply_sleep_tint(&mut local_canvas);
     }
-    draw_item_view(env, unit, item_rows, item_size, &mut item_canvas);
+    draw_item_view(env, unit, item_size, &mut item_canvas);
 
     let mut pixels = vec![0_u8; size[0] * size[1] * 3];
     blit_rgb(&mut pixels, size, border, &local_canvas, local_size);
@@ -120,7 +120,6 @@ fn draw_local_view(
 fn draw_item_view(
     env: &Env,
     unit: [usize; 2],
-    _item_rows: usize,
     canvas_size: [usize; 2],
     canvas: &mut [u8],
 ) {
@@ -250,7 +249,7 @@ fn apply_lighting(pixels: &mut [u8], size: [usize; 2], env: &Env, noise_index: u
     }
 }
 
-fn apply_sleep_tint(pixels: &mut [u8], _size: [usize; 2]) {
+fn apply_sleep_tint(pixels: &mut [u8]) {
     for rgb in pixels.chunks_exact_mut(3) {
         let gray = pil_grayscale(rgb[0], rgb[1], rgb[2]) as u16;
         rgb[0] = (gray / 2) as u8;
@@ -299,8 +298,8 @@ fn tint_pixels(pixels: &mut [f64], tint: [f64; 3], amount: f64) {
 
 fn noise_seed(env: &Env, noise_index: u64) -> u64 {
     let mut hasher = DefaultHasher::new();
-    env.episode.hash(&mut hasher);
-    env.step_count.hash(&mut hasher);
+    env.episode().hash(&mut hasher);
+    env.step_count().hash(&mut hasher);
     env.player_position().hash(&mut hasher);
     env.world().daylight().to_bits().hash(&mut hasher);
     noise_index.hash(&mut hasher);
@@ -319,9 +318,10 @@ fn noise_value(seed: u64, x: u64, y: u64) -> f64 {
     32.0 + unit * 95.0
 }
 
+type VignetteCache = Mutex<HashMap<(usize, usize, u64), Arc<Vec<f64>>>>;
+
 fn vignette(size: [usize; 2], stddev: f64) -> Arc<Vec<f64>> {
-    static VIGNETTE_CACHE: OnceLock<Mutex<HashMap<(usize, usize, u64), Arc<Vec<f64>>>>> =
-        OnceLock::new();
+    static VIGNETTE_CACHE: OnceLock<VignetteCache> = OnceLock::new();
     let cache = VIGNETTE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let key = (size[0], size[1], stddev.to_bits());
     if let Some(mask) = cache.lock().expect("vignette cache poisoned").get(&key) {

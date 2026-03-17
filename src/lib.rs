@@ -96,13 +96,13 @@ impl Env {
         let update_distance = 2 * self.config.view[0].max(self.config.view[1]);
         let handles = self.world.object_handles();
         for handle in handles {
-            if let Some((pos, _)) = self.world.object_position_and_kind(handle) {
-                if manhattan_distance(self.player.pos(), pos) < update_distance as i32 {
-                    self.update_object(handle);
-                }
+            if let Some((pos, _)) = self.world.object_position_and_kind(handle)
+                && manhattan_distance(self.player.pos(), pos) < update_distance as i32
+            {
+                self.update_object(handle);
             }
         }
-        if self.step_count % 10 == 0 {
+        if self.step_count.is_multiple_of(10) {
             self.balance_chunks();
         }
 
@@ -173,6 +173,14 @@ impl Env {
 
     pub fn config(&self) -> &EnvConfig {
         &self.config
+    }
+
+    pub fn episode(&self) -> u64 {
+        self.episode
+    }
+
+    pub fn step_count(&self) -> u32 {
+        self.step_count
     }
 
     pub fn semantic_view(&self) -> SemanticGrid {
@@ -278,15 +286,14 @@ impl Env {
 
     fn move_player(&mut self, direction: Direction) {
         self.player.set_facing(direction);
-        if let Some(target) = self.world.offset_pos(self.player.pos(), direction.delta()) {
-            if self
+        if let Some(target) = self.world.offset_pos(self.player.pos(), direction.delta())
+            && self
                 .world
                 .is_free_for(target, &PLAYER_WALKABLE, self.player.pos(), None)
-            {
-                self.player.set_pos(target);
-                if self.world.material(target) == Some(Material::Lava) {
-                    self.player.set_health(0);
-                }
+        {
+            self.player.set_pos(target);
+            if self.world.material(target) == Some(Material::Lava) {
+                self.player.set_health(0);
             }
         }
     }
@@ -322,30 +329,10 @@ impl Env {
                 self.world.put_plant(idx, plant);
             }
             ObjectHandle::Zombie(idx) => {
-                let Some(mut zombie) = self.world.take_zombie(idx) else {
-                    return;
-                };
-                zombie.health -= damage;
-                if zombie.health <= 0 {
-                    self.player
-                        .achievements_mut()
-                        .increment(Achievement::DefeatZombie);
-                } else {
-                    self.world.put_zombie(idx, zombie);
-                }
+                self.attack_zombie(idx, damage);
             }
             ObjectHandle::Skeleton(idx) => {
-                let Some(mut skeleton) = self.world.take_skeleton(idx) else {
-                    return;
-                };
-                skeleton.health -= damage;
-                if skeleton.health <= 0 {
-                    self.player
-                        .achievements_mut()
-                        .increment(Achievement::DefeatSkeleton);
-                } else {
-                    self.world.put_skeleton(idx, skeleton);
-                }
+                self.attack_skeleton(idx, damage);
             }
             ObjectHandle::Cow(idx) => {
                 let Some(mut cow) = self.world.take_cow(idx) else {
@@ -371,6 +358,34 @@ impl Env {
         }
     }
 
+    fn attack_zombie(&mut self, idx: usize, damage: i32) {
+        let Some(mut zombie) = self.world.take_zombie(idx) else {
+            return;
+        };
+        zombie.health -= damage;
+        if zombie.health <= 0 {
+            self.player
+                .achievements_mut()
+                .increment(Achievement::DefeatZombie);
+        } else {
+            self.world.put_zombie(idx, zombie);
+        }
+    }
+
+    fn attack_skeleton(&mut self, idx: usize, damage: i32) {
+        let Some(mut skeleton) = self.world.take_skeleton(idx) else {
+            return;
+        };
+        skeleton.health -= damage;
+        if skeleton.health <= 0 {
+            self.player
+                .achievements_mut()
+                .increment(Achievement::DefeatSkeleton);
+        } else {
+            self.world.put_skeleton(idx, skeleton);
+        }
+    }
+
     fn do_material(&mut self, target: Position, material: Material) {
         if material == Material::Water {
             *self.player.thirst_mut() = 0.0;
@@ -378,53 +393,38 @@ impl Env {
         match material {
             Material::Tree => {
                 self.world.set_material(target, Material::Grass);
-                self.player.inventory_mut().add_item(ItemKind::Wood, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectWood);
+                self.collect(ItemKind::Wood, Achievement::CollectWood);
             }
             Material::Stone if self.player.item(ItemKind::WoodPickaxe) >= 1 => {
-                self.world.set_material(target, Material::Path);
-                self.player.inventory_mut().add_item(ItemKind::Stone, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectStone);
+                self.mine(target, ItemKind::Stone, Achievement::CollectStone);
             }
             Material::Coal if self.player.item(ItemKind::WoodPickaxe) >= 1 => {
-                self.world.set_material(target, Material::Path);
-                self.player.inventory_mut().add_item(ItemKind::Coal, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectCoal);
+                self.mine(target, ItemKind::Coal, Achievement::CollectCoal);
             }
             Material::Iron if self.player.item(ItemKind::StonePickaxe) >= 1 => {
-                self.world.set_material(target, Material::Path);
-                self.player.inventory_mut().add_item(ItemKind::Iron, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectIron);
+                self.mine(target, ItemKind::Iron, Achievement::CollectIron);
             }
             Material::Diamond if self.player.item(ItemKind::IronPickaxe) >= 1 => {
-                self.world.set_material(target, Material::Path);
-                self.player.inventory_mut().add_item(ItemKind::Diamond, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectDiamond);
+                self.mine(target, ItemKind::Diamond, Achievement::CollectDiamond);
             }
             Material::Water => {
-                self.player.inventory_mut().add_item(ItemKind::Drink, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectDrink);
+                self.collect(ItemKind::Drink, Achievement::CollectDrink);
             }
             Material::Grass if self.world.random_f32() <= 0.1 => {
-                self.player.inventory_mut().add_item(ItemKind::Sapling, 1);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::CollectSapling);
+                self.collect(ItemKind::Sapling, Achievement::CollectSapling);
             }
             _ => {}
         }
+    }
+
+    fn mine(&mut self, target: Position, item: ItemKind, achievement: Achievement) {
+        self.world.set_material(target, Material::Path);
+        self.collect(item, achievement);
+    }
+
+    fn collect(&mut self, item: ItemKind, achievement: Achievement) {
+        self.player.inventory_mut().add_item(item, 1);
+        self.player.achievements_mut().increment(achievement);
     }
 
     fn place_item(&mut self, material: Material) {
@@ -700,10 +700,10 @@ impl Env {
             }
         } else if creatures.len() > target_max as usize && self.world.random_f32() < despawn_prob {
             let handle = creatures[self.world.random_usize(creatures.len())];
-            if let Some((pos, _)) = self.world.object_position_and_kind(handle) {
-                if manhattan_distance(self.player.pos(), pos) >= despawn_dist {
-                    self.world.remove_object(handle);
-                }
+            if let Some((pos, _)) = self.world.object_position_and_kind(handle)
+                && manhattan_distance(self.player.pos(), pos) >= despawn_dist
+            {
+                self.world.remove_object(handle);
             }
         }
     }
@@ -782,11 +782,12 @@ impl Env {
         skeleton.reload = (skeleton.reload - 1).max(0);
         let dist = manhattan_distance(skeleton.pos, self.player.pos());
         if dist <= 3 {
-            let dir = opposite(toward(
+            let dir = toward(
                 skeleton.pos,
                 self.player.pos(),
                 self.world.random_f32() < 0.6,
-            ));
+            )
+            .opposite();
             if self.try_move_object(
                 &mut skeleton.pos,
                 dir,
@@ -945,15 +946,6 @@ fn toward(from: Position, target: Position, long_axis: bool) -> Direction {
         Direction::Up
     } else {
         Direction::Down
-    }
-}
-
-fn opposite(direction: Direction) -> Direction {
-    match direction {
-        Direction::Left => Direction::Right,
-        Direction::Right => Direction::Left,
-        Direction::Up => Direction::Down,
-        Direction::Down => Direction::Up,
     }
 }
 

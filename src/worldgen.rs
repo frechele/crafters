@@ -43,10 +43,9 @@ fn set_material(
     } else if mountain > 0.15 {
         if simplex_sum(simplex, x, y, 6.0, &[(7.0, 1.0)], true) > 0.15 && mountain > 0.3 {
             Material::Path
-        } else if simplex_sum(simplex, 2.0 * x, y / 5.0, 7.0, &[(3.0, 1.0)], true) > 0.4 {
-            tunnels[index(world.area(), pos)] = true;
-            Material::Path
-        } else if simplex_sum(simplex, x / 5.0, 2.0 * y, 7.0, &[(3.0, 1.0)], true) > 0.4 {
+        } else if simplex_sum(simplex, 2.0 * x, y / 5.0, 7.0, &[(3.0, 1.0)], true) > 0.4
+            || simplex_sum(simplex, x / 5.0, 2.0 * y, 7.0, &[(3.0, 1.0)], true) > 0.4
+        {
             tunnels[index(world.area(), pos)] = true;
             Material::Path
         } else if simplex_sum(simplex, x, y, 1.0, &[(8.0, 1.0)], true) > 0.0

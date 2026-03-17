@@ -5,7 +5,17 @@ import pathlib
 import numpy as np
 
 
-class Recorder:
+class _EnvWrapper:
+    def __init__(self, env):
+        self._env = env
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self._env, name)
+
+
+class Recorder(_EnvWrapper):
     def __init__(
         self,
         env,
@@ -21,17 +31,12 @@ class Recorder:
             env = VideoRecorder(env, directory, video_size)
         if directory and save_episode:
             env = EpisodeRecorder(env, directory)
-        self._env = env
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return getattr(self._env, name)
+        super().__init__(env)
 
 
-class StatsRecorder:
+class StatsRecorder(_EnvWrapper):
     def __init__(self, env, directory):
-        self._env = env
+        super().__init__(env)
         self._directory = pathlib.Path(directory).expanduser()
         self._directory.mkdir(exist_ok=True, parents=True)
         self._file = (self._directory / "stats.jsonl").open("a")
@@ -39,11 +44,6 @@ class StatsRecorder:
         self._reward = None
         self._unlocked = None
         self._stats = None
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return getattr(self._env, name)
 
     def reset(self):
         obs = self._env.reset()
@@ -69,20 +69,15 @@ class StatsRecorder:
         self._file.flush()
 
 
-class VideoRecorder:
+class VideoRecorder(_EnvWrapper):
     def __init__(self, env, directory, size=(512, 512)):
         if not hasattr(env, "episode_name"):
             env = EpisodeName(env)
-        self._env = env
+        super().__init__(env)
         self._directory = pathlib.Path(directory).expanduser()
         self._directory.mkdir(exist_ok=True, parents=True)
         self._size = size
         self._frames = None
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return getattr(self._env, name)
 
     def reset(self):
         obs = self._env.reset()
@@ -103,19 +98,14 @@ class VideoRecorder:
         imageio.mimsave(filename, self._frames)
 
 
-class EpisodeRecorder:
+class EpisodeRecorder(_EnvWrapper):
     def __init__(self, env, directory):
         if not hasattr(env, "episode_name"):
             env = EpisodeName(env)
-        self._env = env
+        super().__init__(env)
         self._directory = pathlib.Path(directory).expanduser()
         self._directory.mkdir(exist_ok=True, parents=True)
         self._episode = None
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return getattr(self._env, name)
 
     def reset(self):
         obs = self._env.reset()
@@ -152,17 +142,12 @@ class EpisodeRecorder:
         np.savez_compressed(filename, **episode)
 
 
-class EpisodeName:
+class EpisodeName(_EnvWrapper):
     def __init__(self, env):
-        self._env = env
+        super().__init__(env)
         self._timestamp = None
         self._unlocked = None
         self._length = None
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return getattr(self._env, name)
 
     def reset(self):
         obs = self._env.reset()

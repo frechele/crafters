@@ -4,6 +4,34 @@ use crate::entities::{Arrow, Cow, Fence, Plant, Player, Skeleton, Zombie};
 use crate::py_random::PyRandom;
 use crate::{Direction, Material, Position, SemanticGrid};
 
+macro_rules! object_storage {
+    ($take:ident, $put:ident, $field:ident, $type:ty) => {
+        pub(crate) fn $take(&mut self, idx: usize) -> Option<$type> {
+            self.$field.get_mut(idx)?.take()
+        }
+
+        pub(crate) fn $put(&mut self, idx: usize, value: $type) {
+            if idx >= self.$field.len() {
+                self.$field.resize_with(idx + 1, || None);
+            }
+            self.$field[idx] = Some(value);
+        }
+    };
+}
+
+macro_rules! collect_handles {
+    ($handles:expr, $self:expr, $(($field:ident, $variant:ident)),+) => {
+        $(
+            $handles.extend(
+                $self.$field
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::$variant(idx))),
+            );
+        )+
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ObjectHandle {
     Cow(usize),
@@ -193,41 +221,14 @@ impl World {
 
     pub(crate) fn object_handles(&self) -> Vec<ObjectHandle> {
         let mut handles = Vec::new();
-        handles.extend(
-            self.cows
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Cow(idx))),
-        );
-        handles.extend(
-            self.zombies
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Zombie(idx))),
-        );
-        handles.extend(
-            self.skeletons
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Skeleton(idx))),
-        );
-        handles.extend(
-            self.arrows
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Arrow(idx))),
-        );
-        handles.extend(
-            self.plants
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Plant(idx))),
-        );
-        handles.extend(
-            self.fences
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::Fence(idx))),
+        collect_handles!(
+            handles, self,
+            (cows, Cow),
+            (zombies, Zombie),
+            (skeletons, Skeleton),
+            (arrows, Arrow),
+            (plants, Plant),
+            (fences, Fence)
         );
         handles
     }
@@ -319,82 +320,22 @@ impl World {
     pub(crate) fn adjacent_object_kinds(&self, pos: Position) -> Vec<ObjectKind> {
         let mut result = Vec::new();
         for direction in Direction::ALL {
-            if let Some(target) = self.offset_pos(pos, direction.delta()) {
-                if let Some(handle) = self.object_at(target, None) {
-                    if let Some((_, kind)) = self.object_position_and_kind(handle) {
-                        result.push(kind);
-                    }
-                }
+            if let Some(target) = self.offset_pos(pos, direction.delta())
+                && let Some(handle) = self.object_at(target, None)
+                && let Some((_, kind)) = self.object_position_and_kind(handle)
+            {
+                result.push(kind);
             }
         }
         result
     }
 
-    pub(crate) fn take_cow(&mut self, idx: usize) -> Option<Cow> {
-        self.cows.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_cow(&mut self, idx: usize, value: Cow) {
-        if idx >= self.cows.len() {
-            self.cows.resize_with(idx + 1, || None);
-        }
-        self.cows[idx] = Some(value);
-    }
-
-    pub(crate) fn take_zombie(&mut self, idx: usize) -> Option<Zombie> {
-        self.zombies.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_zombie(&mut self, idx: usize, value: Zombie) {
-        if idx >= self.zombies.len() {
-            self.zombies.resize_with(idx + 1, || None);
-        }
-        self.zombies[idx] = Some(value);
-    }
-
-    pub(crate) fn take_skeleton(&mut self, idx: usize) -> Option<Skeleton> {
-        self.skeletons.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_skeleton(&mut self, idx: usize, value: Skeleton) {
-        if idx >= self.skeletons.len() {
-            self.skeletons.resize_with(idx + 1, || None);
-        }
-        self.skeletons[idx] = Some(value);
-    }
-
-    pub(crate) fn take_arrow(&mut self, idx: usize) -> Option<Arrow> {
-        self.arrows.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_arrow(&mut self, idx: usize, value: Arrow) {
-        if idx >= self.arrows.len() {
-            self.arrows.resize_with(idx + 1, || None);
-        }
-        self.arrows[idx] = Some(value);
-    }
-
-    pub(crate) fn take_plant(&mut self, idx: usize) -> Option<Plant> {
-        self.plants.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_plant(&mut self, idx: usize, value: Plant) {
-        if idx >= self.plants.len() {
-            self.plants.resize_with(idx + 1, || None);
-        }
-        self.plants[idx] = Some(value);
-    }
-
-    pub(crate) fn take_fence(&mut self, idx: usize) -> Option<Fence> {
-        self.fences.get_mut(idx)?.take()
-    }
-
-    pub(crate) fn put_fence(&mut self, idx: usize, value: Fence) {
-        if idx >= self.fences.len() {
-            self.fences.resize_with(idx + 1, || None);
-        }
-        self.fences[idx] = Some(value);
-    }
+    object_storage!(take_cow, put_cow, cows, Cow);
+    object_storage!(take_zombie, put_zombie, zombies, Zombie);
+    object_storage!(take_skeleton, put_skeleton, skeletons, Skeleton);
+    object_storage!(take_arrow, put_arrow, arrows, Arrow);
+    object_storage!(take_plant, put_plant, plants, Plant);
+    object_storage!(take_fence, put_fence, fences, Fence);
 
     pub(crate) fn damage_object(&mut self, handle: ObjectHandle, amount: i32) {
         match handle {
@@ -428,37 +369,20 @@ impl World {
     }
 
     pub(crate) fn remove_object(&mut self, handle: ObjectHandle) {
+        macro_rules! remove {
+            ($field:ident, $idx:expr) => {
+                if let Some(slot) = self.$field.get_mut($idx) {
+                    *slot = None;
+                }
+            };
+        }
         match handle {
-            ObjectHandle::Cow(idx) => {
-                if let Some(slot) = self.cows.get_mut(idx) {
-                    *slot = None;
-                }
-            }
-            ObjectHandle::Zombie(idx) => {
-                if let Some(slot) = self.zombies.get_mut(idx) {
-                    *slot = None;
-                }
-            }
-            ObjectHandle::Skeleton(idx) => {
-                if let Some(slot) = self.skeletons.get_mut(idx) {
-                    *slot = None;
-                }
-            }
-            ObjectHandle::Arrow(idx) => {
-                if let Some(slot) = self.arrows.get_mut(idx) {
-                    *slot = None;
-                }
-            }
-            ObjectHandle::Plant(idx) => {
-                if let Some(slot) = self.plants.get_mut(idx) {
-                    *slot = None;
-                }
-            }
-            ObjectHandle::Fence(idx) => {
-                if let Some(slot) = self.fences.get_mut(idx) {
-                    *slot = None;
-                }
-            }
+            ObjectHandle::Cow(idx) => remove!(cows, idx),
+            ObjectHandle::Zombie(idx) => remove!(zombies, idx),
+            ObjectHandle::Skeleton(idx) => remove!(skeletons, idx),
+            ObjectHandle::Arrow(idx) => remove!(arrows, idx),
+            ObjectHandle::Plant(idx) => remove!(plants, idx),
+            ObjectHandle::Fence(idx) => remove!(fences, idx),
         }
     }
 
