@@ -8,6 +8,17 @@ faster native core and a lightweight local runner.
 The sprite assets in `assets/crafter/` are copied from the original repository
 under its MIT license.
 
+## Benchmark
+
+| Metric | Python Crafter | Rust Crafter | Speedup |
+|---|---|---|---|
+| Step time (mean) | 3.761 ms | 0.069 ms | **54.9x** |
+| Step time (median) | 3.646 ms | 0.063 ms | **57.9x** |
+| Step time (p95) | 4.575 ms | 0.109 ms | **42.0x** |
+| Step time (p99) | 5.083 ms | 0.127 ms | **40.0x** |
+| Reset time | 61.03 ms | 2.01 ms | **30.4x** |
+| Throughput | 265.9 steps/sec | 14,593 steps/sec | **54.9x** |
+
 ## Why use it
 
 - Keep a Python-facing API that is close to the original `crafter` package.
