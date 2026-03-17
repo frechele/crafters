@@ -44,6 +44,64 @@ fn zombie_and_skeleton_updates_affect_player_and_world() {
 }
 
 #[test]
+fn chunk_balancing_can_spawn_skeletons_in_populated_path_chunks() {
+    let mut env = Env::new(EnvConfig {
+        area: [64, 64],
+        ..EnvConfig::default()
+    });
+    env.world_mut().fill(Material::Path);
+    env.world_mut().clear_objects();
+
+    let player = env.player_position();
+    for chunk_x in (0..64).step_by(12) {
+        for chunk_y in (0..64).step_by(12) {
+            let pos = [(chunk_x + 1).min(63), (chunk_y + 1).min(63)];
+            if pos != player {
+                env.world_mut().spawn_cow(pos);
+            }
+        }
+    }
+
+    assert_eq!(count_semantic_id(&env, 16), 0);
+    for _ in 0..10 {
+        env.step(Action::Noop);
+    }
+    assert!(
+        count_semantic_id(&env, 16) > 0,
+        "expected periodic chunk balancing to spawn at least one skeleton"
+    );
+}
+
+#[test]
+fn chunk_balancing_can_spawn_zombies_in_populated_grass_chunks() {
+    let mut env = Env::new(EnvConfig {
+        area: [64, 64],
+        ..EnvConfig::default()
+    });
+    env.world_mut().fill(Material::Grass);
+    env.world_mut().clear_objects();
+
+    let player = env.player_position();
+    for chunk_x in (0..64).step_by(12) {
+        for chunk_y in (0..64).step_by(12) {
+            let pos = [(chunk_x + 1).min(63), (chunk_y + 1).min(63)];
+            if pos != player {
+                env.world_mut().spawn_plant(pos);
+            }
+        }
+    }
+
+    assert_eq!(count_semantic_id(&env, 15), 0);
+    for _ in 0..300 {
+        env.step(Action::Noop);
+    }
+    assert!(
+        count_semantic_id(&env, 15) > 0,
+        "expected nighttime chunk balancing to spawn at least one zombie"
+    );
+}
+
+#[test]
 fn lethal_damage_marks_done_and_zero_discount() {
     let mut env = Env::default();
     env.reset();
@@ -56,4 +114,12 @@ fn lethal_damage_marks_done_and_zero_discount() {
     let result = env.step(Action::Noop);
     assert!(result.done);
     assert_eq!(result.info.discount, 0.0);
+}
+
+fn count_semantic_id(env: &Env, id: u16) -> usize {
+    env.semantic_view()
+        .cells()
+        .iter()
+        .filter(|cell| **cell == id)
+        .count()
 }
