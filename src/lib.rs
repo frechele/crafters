@@ -42,6 +42,7 @@ const ARROW_WALKABLE: [Material; 5] = [
     Material::Water,
     Material::Lava,
 ];
+type ChunkKey = (usize, usize, usize, usize);
 
 #[derive(Clone, Debug)]
 pub struct Env {
@@ -100,6 +101,9 @@ impl Env {
                     self.update_object(handle);
                 }
             }
+        }
+        if self.step_count % 10 == 0 {
+            self.balance_chunks();
         }
 
         let obs = self.observation();
@@ -608,6 +612,124 @@ impl Env {
         }
     }
 
+    fn balance_chunks(&mut self) {
+        let mut seen = HashSet::new();
+        let mut chunks = Vec::new();
+
+        let player_chunk = chunk_key(&self.world, self.player.pos());
+        seen.insert(player_chunk);
+        chunks.push(player_chunk);
+
+        for handle in self.world.object_handles() {
+            if let Some((pos, _)) = self.world.object_position_and_kind(handle) {
+                let chunk = chunk_key(&self.world, pos);
+                if seen.insert(chunk) {
+                    chunks.push(chunk);
+                }
+            }
+        }
+
+        for chunk in chunks {
+            self.balance_chunk(chunk);
+        }
+    }
+
+    fn balance_chunk(&mut self, chunk: ChunkKey) {
+        let light = self.world.daylight();
+        self.balance_object(
+            chunk,
+            ObjectKind::Zombie,
+            Material::Grass,
+            6,
+            0,
+            0.3,
+            0.4,
+            |space| {
+                let target = if space < 50 { 0.0 } else { 3.5 - 3.0 * light };
+                (target, 3.5 - 3.0 * light)
+            },
+        );
+        self.balance_object(
+            chunk,
+            ObjectKind::Skeleton,
+            Material::Path,
+            7,
+            7,
+            0.1,
+            0.1,
+            |space| (if space < 6 { 0.0 } else { 1.0 }, 2.0),
+        );
+        self.balance_object(
+            chunk,
+            ObjectKind::Cow,
+            Material::Grass,
+            5,
+            5,
+            0.01,
+            0.1,
+            |space| (if space < 30 { 0.0 } else { 1.0 }, 1.5 + light),
+        );
+    }
+
+    fn balance_object<F>(
+        &mut self,
+        chunk: ChunkKey,
+        kind: ObjectKind,
+        material: Material,
+        spawn_dist: i32,
+        despawn_dist: i32,
+        spawn_prob: f32,
+        despawn_prob: f32,
+        target_fn: F,
+    ) where
+        F: Fn(usize) -> (f32, f32),
+    {
+        let positions = chunk_positions_with_material(&self.world, chunk, material);
+        let creatures = self.chunk_creatures(chunk, kind);
+        let (target_min, target_max) = target_fn(positions.len());
+
+        if creatures.len() < target_min as usize && self.world.random_f32() < spawn_prob {
+            if positions.is_empty() {
+                return;
+            }
+            let pos = positions[self.world.random_usize(positions.len())];
+            let empty = self.world.object_at(pos, None).is_none() && pos != self.player.pos();
+            let away = manhattan_distance(self.player.pos(), pos) >= spawn_dist;
+            if empty && away {
+                self.spawn_object(kind, pos);
+            }
+        } else if creatures.len() > target_max as usize && self.world.random_f32() < despawn_prob {
+            let handle = creatures[self.world.random_usize(creatures.len())];
+            if let Some((pos, _)) = self.world.object_position_and_kind(handle) {
+                if manhattan_distance(self.player.pos(), pos) >= despawn_dist {
+                    self.world.remove_object(handle);
+                }
+            }
+        }
+    }
+
+    fn chunk_creatures(&self, chunk: ChunkKey, kind: ObjectKind) -> Vec<ObjectHandle> {
+        self.world
+            .object_handles()
+            .into_iter()
+            .filter(|handle| {
+                self.world
+                    .object_position_and_kind(*handle)
+                    .map(|(pos, object_kind)| object_kind == kind && chunk_contains(chunk, pos))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+
+    fn spawn_object(&mut self, kind: ObjectKind, pos: Position) {
+        match kind {
+            ObjectKind::Cow => self.world.spawn_cow(pos),
+            ObjectKind::Zombie => self.world.spawn_zombie(pos),
+            ObjectKind::Skeleton => self.world.spawn_skeleton(pos),
+            ObjectKind::Arrow | ObjectKind::Plant | ObjectKind::Fence => {}
+        }
+    }
+
     fn update_cow(&mut self, idx: usize) {
         let Some(mut cow) = self.world.take_cow(idx) else {
             return;
@@ -837,6 +959,34 @@ fn opposite(direction: Direction) -> Direction {
 
 fn random_direction(world: &mut World) -> Direction {
     Direction::ALL[world.random_usize(Direction::ALL.len())]
+}
+
+fn chunk_key(world: &World, pos: Position) -> ChunkKey {
+    let [chunk_width, chunk_height] = world.chunk_size();
+    let [area_width, area_height] = world.area();
+    let xmin = (pos[0] / chunk_width) * chunk_width;
+    let ymin = (pos[1] / chunk_height) * chunk_height;
+    let xmax = (xmin + chunk_width).min(area_width);
+    let ymax = (ymin + chunk_height).min(area_height);
+    (xmin, xmax, ymin, ymax)
+}
+
+fn chunk_contains(chunk: ChunkKey, pos: Position) -> bool {
+    let (xmin, xmax, ymin, ymax) = chunk;
+    xmin <= pos[0] && pos[0] < xmax && ymin <= pos[1] && pos[1] < ymax
+}
+
+fn chunk_positions_with_material(world: &World, chunk: ChunkKey, material: Material) -> Vec<Position> {
+    let (xmin, xmax, ymin, ymax) = chunk;
+    let mut positions = Vec::new();
+    for x in xmin..xmax {
+        for y in ymin..ymax {
+            if world.material([x, y]) == Some(material) {
+                positions.push([x, y]);
+            }
+        }
+    }
+    positions
 }
 
 fn sword_damage(player: &Player) -> i32 {
