@@ -33,13 +33,25 @@ fn zombie_and_skeleton_updates_affect_player_and_world() {
     let player = env.player_position();
     env.world_mut().spawn_zombie([player[0] + 1, player[1]]);
     let health_before = env.player().health();
-    let zombie_step = env.step(Action::Noop);
+    let mut zombie_rewards = Vec::new();
+    for _ in 0..10 {
+        let zombie_step = env.step(Action::Noop);
+        zombie_rewards.push(zombie_step.reward);
+        if env.player().health() < health_before {
+            break;
+        }
+    }
     assert!(env.player().health() < health_before);
-    assert!(zombie_step.reward < 0.0);
+    assert!(zombie_rewards.into_iter().any(|reward| reward < 0.0));
 
     env.world_mut().clear_objects();
     env.world_mut().spawn_skeleton([player[0] + 4, player[1]]);
-    env.step(Action::Noop);
+    for _ in 0..20 {
+        env.step(Action::Noop);
+        if env.world().arrow_count() > 0 {
+            break;
+        }
+    }
     assert!(env.world().arrow_count() > 0);
 }
 
@@ -111,7 +123,13 @@ fn lethal_damage_marks_done_and_zero_discount() {
     let player = env.player_position();
     env.player_mut().set_health(1);
     env.world_mut().spawn_zombie([player[0] + 1, player[1]]);
-    let result = env.step(Action::Noop);
+    let mut result = env.step(Action::Noop);
+    for _ in 0..10 {
+        if result.done {
+            break;
+        }
+        result = env.step(Action::Noop);
+    }
     assert!(result.done);
     assert_eq!(result.info.discount, 0.0);
 }

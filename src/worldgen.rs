@@ -1,9 +1,8 @@
-use noise::{NoiseFn, OpenSimplex};
-
+use crate::opensimplex::OpenSimplexNoise;
 use crate::{Material, Position, World};
 
 pub fn generate_world(world: &mut World, player_pos: Position) {
-    let simplex = OpenSimplex::new(world.random_u32());
+    let simplex = OpenSimplexNoise::new(world.random_i64((1_i64 << 31) - 1));
     let mut tunnels = vec![false; world.area()[0] * world.area()[1]];
     for x in 0..world.area()[0] {
         for y in 0..world.area()[1] {
@@ -22,7 +21,7 @@ fn set_material(
     pos: Position,
     player_pos: Position,
     tunnels: &mut [bool],
-    simplex: &OpenSimplex,
+    simplex: &OpenSimplexNoise,
 ) {
     let x = pos[0] as f64;
     let y = pos[1] as f64;
@@ -51,27 +50,29 @@ fn set_material(
             tunnels[index(world.area(), pos)] = true;
             Material::Path
         } else if simplex_sum(simplex, x, y, 1.0, &[(8.0, 1.0)], true) > 0.0
-            && world.random_f32() > 0.85
+            && world.random_f64() > 0.85
         {
             Material::Coal
         } else if simplex_sum(simplex, x, y, 2.0, &[(6.0, 1.0)], true) > 0.4
-            && world.random_f32() > 0.75
+            && world.random_f64() > 0.75
         {
             Material::Iron
-        } else if mountain > 0.18 && world.random_f32() > 0.994 {
+        } else if mountain > 0.18 && world.random_f64() > 0.994 {
             Material::Diamond
         } else if mountain > 0.3 && simplex_sum(simplex, x, y, 6.0, &[(5.0, 1.0)], true) > 0.35 {
             Material::Lava
         } else {
             Material::Stone
         }
-    } else if (0.25..=0.35).contains(&water)
+    } else if water > 0.25
+        && water <= 0.35
         && simplex_sum(simplex, x, y, 4.0, &[(9.0, 1.0)], true) > -0.2
     {
         Material::Sand
     } else if water > 0.3 {
         Material::Water
-    } else if simplex_sum(simplex, x, y, 5.0, &[(7.0, 1.0)], true) > 0.0 && world.random_f32() > 0.8
+    } else if simplex_sum(simplex, x, y, 5.0, &[(7.0, 1.0)], true) > 0.0
+        && world.random_f64() > 0.8
     {
         Material::Tree
     } else {
@@ -81,7 +82,7 @@ fn set_material(
 }
 
 fn simplex_sum(
-    simplex: &OpenSimplex,
+    simplex: &OpenSimplexNoise,
     x: f64,
     y: f64,
     z: f64,
@@ -91,7 +92,7 @@ fn simplex_sum(
     let mut value = 0.0;
     let mut weight_sum = 0.0;
     for (size, weight) in sizes {
-        value += *weight * simplex.get([x / *size, y / *size, z]);
+        value += *weight * simplex.noise3(x / *size, y / *size, z);
         weight_sum += *weight;
     }
     if normalize && weight_sum > 0.0 {
@@ -113,13 +114,13 @@ fn set_object(world: &mut World, pos: Position, player_pos: Position, tunnels: &
     if !material.is_walkable() {
         return;
     }
-    if dist > 3.0 && material == Material::Grass && world.random_f32() > 0.985 {
+    if dist > 3.0 && material == Material::Grass && world.random_f64() > 0.985 {
         world.spawn_cow(pos);
-    } else if dist > 10.0 && world.random_f32() > 0.993 {
+    } else if dist > 10.0 && world.random_f64() > 0.993 {
         world.spawn_zombie(pos);
     } else if material == Material::Path
         && tunnels[index(world.area(), pos)]
-        && world.random_f32() > 0.95
+        && world.random_f64() > 0.95
     {
         world.spawn_skeleton(pos);
     }
