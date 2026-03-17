@@ -10,6 +10,25 @@ The sprite assets in `assets/crafter/` are copied from the original
 cargo run --bin play
 ```
 
+## Python API
+
+Install the PyO3-backed package with:
+
+```bash
+python3 -m pip install -e .
+```
+
+The goal is to keep the surface close to the original Python package. In many
+call sites, switching to the Rust-backed environment should be as small as:
+
+```python
+from crafters import Env
+
+env = Env(seed=0)
+obs = env.reset()
+obs, reward, done, info = env.step(env.action_names.index("noop"))
+```
+
 ## Controls
 
 - Arrow keys: move
