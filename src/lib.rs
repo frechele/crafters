@@ -1,6 +1,8 @@
 mod config;
 mod entities;
+mod opensimplex;
 mod pillow_resize_16;
+mod py_random;
 #[cfg(feature = "python-module")]
 mod python_api;
 mod render;
@@ -11,8 +13,6 @@ mod worldgen;
 
 use std::cell::Cell;
 use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[cfg(feature = "python-module")]
 use pyo3::prelude::*;
@@ -1020,7 +1020,49 @@ fn crafters_python_module(_py: Python<'_>, module: &Bound<'_, PyModule>) -> PyRe
 }
 
 fn episode_seed(seed: u64, episode: u64) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    (seed, episode).hash(&mut hasher);
-    hasher.finish() % ((1_u64 << 31) - 1)
+    python_tuple_hash_pair(seed, episode).rem_euclid(((1_u64 << 31) - 1) as i64) as u64
+}
+
+fn python_tuple_hash_pair(lhs: u64, rhs: u64) -> i64 {
+    const XXPRIME_1: u64 = 11_400_714_785_074_694_791;
+    const XXPRIME_2: u64 = 14_029_467_366_897_019_727;
+    const XXPRIME_5: u64 = 2_870_177_450_012_600_261;
+    const TUPLE_HASH_XXPRIME_5: u64 = 3_527_539;
+
+    let mut acc = XXPRIME_5;
+    for lane in [python_int_hash_u64(lhs) as u64, python_int_hash_u64(rhs) as u64] {
+        acc = acc.wrapping_add(lane.wrapping_mul(XXPRIME_2));
+        acc = acc.rotate_left(31);
+        acc = acc.wrapping_mul(XXPRIME_1);
+    }
+    acc = acc.wrapping_add(2 ^ (XXPRIME_5 ^ TUPLE_HASH_XXPRIME_5));
+    if acc == u64::MAX {
+        1_546_275_796
+    } else {
+        acc as i64
+    }
+}
+
+fn python_int_hash_u64(value: u64) -> i64 {
+    const PY_HASH_MODULUS: u64 = (1_u64 << 61) - 1;
+    (value % PY_HASH_MODULUS) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::episode_seed;
+
+    #[test]
+    fn episode_seed_matches_python_tuple_hash_reference() {
+        let cases = [
+            ((0, 1), 1_256_191_933),
+            ((1, 1), 535_231_920),
+            ((7, 3), 693_148_721),
+            ((123, 456), 1_039_445_943),
+            ((2_147_483_646, 9), 390_076_502),
+        ];
+        for ((seed, episode), expected) in cases {
+            assert_eq!(episode_seed(seed, episode), expected);
+        }
+    }
 }

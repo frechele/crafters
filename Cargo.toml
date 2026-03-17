@@ -14,11 +14,9 @@ python-module = ["dep:numpy", "dep:pyo3"]
 [dependencies]
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 minifb = "0.28.0"
-noise = "0.9"
 numpy = { version = "0.28.0", optional = true }
 pyo3 = { version = "0.28.2", optional = true, features = ["extension-module"] }
-rand = "0.9"
-rand_chacha = "0.9"
+rand_mt = "6.0.2"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

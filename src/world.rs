@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
-
 use crate::entities::{Arrow, Cow, Fence, Plant, Player, Skeleton, Zombie};
+use crate::py_random::PyRandom;
 use crate::{Direction, Material, Position, SemanticGrid};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,7 +30,7 @@ pub struct World {
     chunk_size: [usize; 2],
     materials: Vec<Option<Material>>,
     daylight: f32,
-    rng: ChaCha8Rng,
+    rng: PyRandom,
     cows: Vec<Option<Cow>>,
     zombies: Vec<Option<Zombie>>,
     skeletons: Vec<Option<Skeleton>>,
@@ -48,7 +46,7 @@ impl World {
             chunk_size,
             materials: vec![None; area[0] * area[1]],
             daylight: 0.0,
-            rng: ChaCha8Rng::seed_from_u64(0),
+            rng: PyRandom::new(0),
             cows: Vec::new(),
             zombies: Vec::new(),
             skeletons: Vec::new(),
@@ -61,7 +59,7 @@ impl World {
     pub fn reset(&mut self, seed: u64) {
         self.materials.fill(None);
         self.daylight = 0.0;
-        self.rng = ChaCha8Rng::seed_from_u64(seed);
+        self.rng = PyRandom::new(seed as u32);
         self.clear_objects();
     }
 
@@ -149,19 +147,27 @@ impl World {
     }
 
     pub fn random_f32(&mut self) -> f32 {
-        self.rng.random::<f32>()
+        self.rng.uniform() as f32
+    }
+
+    pub fn random_f64(&mut self) -> f64 {
+        self.rng.uniform()
     }
 
     pub fn random_usize(&mut self, upper_exclusive: usize) -> usize {
-        self.rng.random_range(0..upper_exclusive)
+        self.rng.randint(upper_exclusive as u32) as usize
+    }
+
+    pub fn random_i64(&mut self, upper_exclusive: i64) -> i64 {
+        self.rng.randint(upper_exclusive as u32) as i64
     }
 
     pub fn random_bool(&mut self, probability: f32) -> bool {
-        self.random_f32() < probability
+        self.random_f64() < probability as f64
     }
 
     pub fn random_u32(&mut self) -> u32 {
-        self.rng.random::<u32>()
+        self.rng.next_u32()
     }
 
     pub fn daylight(&self) -> f32 {
