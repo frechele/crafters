@@ -1,6 +1,8 @@
 mod config;
 mod entities;
 mod pillow_resize_16;
+#[cfg(feature = "python-module")]
+mod python_api;
 mod render;
 mod runner;
 mod types;
@@ -11,6 +13,9 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+#[cfg(feature = "python-module")]
+use pyo3::prelude::*;
 
 pub use config::EnvConfig;
 pub use entities::{Arrow, Cow, Fence, Plant, Player, Skeleton, Zombie};
@@ -856,6 +861,12 @@ fn sword_damage(player: &Player) -> i32 {
     .into_iter()
     .max()
     .unwrap_or(1)
+}
+
+#[cfg(feature = "python-module")]
+#[pymodule(name = "_core")]
+fn crafters_python_module(_py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
+    python_api::register(module)
 }
 
 fn episode_seed(seed: u64, episode: u64) -> u64 {
