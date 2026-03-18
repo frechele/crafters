@@ -1,23 +1,23 @@
-use crafter_rs::{Action, Frame, RunnerKey, runner_action_from_keys, runner_frame_to_buffer};
+use crafter_rs::{Frame, RunnerKey, runner_action_from_keys, runner_frame_to_buffer};
 
 #[test]
 fn runner_maps_keys_to_single_action() {
-    assert_eq!(runner_action_from_keys(&[]), Action::Noop);
+    assert_eq!(runner_action_from_keys(&[]), "noop");
     assert_eq!(
         runner_action_from_keys(&[RunnerKey::Left]),
-        Action::MoveLeft
+        "move_left"
     );
     assert_eq!(
         runner_action_from_keys(&[RunnerKey::Right]),
-        Action::MoveRight
+        "move_right"
     );
     assert_eq!(
         runner_action_from_keys(&[RunnerKey::Left, RunnerKey::Do]),
-        Action::Do
+        "do"
     );
     assert_eq!(
         runner_action_from_keys(&[RunnerKey::Down, RunnerKey::PlaceTable]),
-        Action::PlaceTable
+        "place_table"
     );
 }
 

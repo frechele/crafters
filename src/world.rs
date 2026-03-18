@@ -79,40 +79,9 @@ impl World {
         }
     }
 
-    // Legacy convenience methods for tests and external callers
-    pub fn spawn_cow(&mut self, pos: Position, health: i32) {
-        // type_id 0 = cow (first entity in config)
-        self.spawn_entity(pos, EntityTypeId(0), health);
-    }
-
-    pub fn spawn_zombie(&mut self, pos: Position, health: i32) {
-        // type_id 1 = zombie
-        self.spawn_entity(pos, EntityTypeId(1), health);
-    }
-
-    pub fn spawn_skeleton(&mut self, pos: Position, health: i32) {
-        // type_id 2 = skeleton
-        self.spawn_entity(pos, EntityTypeId(2), health);
-    }
-
-    pub fn spawn_arrow(&mut self, pos: Position, facing: Direction) {
-        // type_id 3 = arrow
-        self.spawn_entity_facing(pos, EntityTypeId(3), facing);
-    }
-
-    pub fn spawn_plant(&mut self, pos: Position, health: i32, _ripen_time: i32) {
-        // type_id 4 = plant
-        self.spawn_entity(pos, EntityTypeId(4), health);
-    }
-
-    pub fn spawn_fence(&mut self, pos: Position) {
-        // type_id 5 = fence
-        self.spawn_entity(pos, EntityTypeId(5), 0);
-    }
-
-    pub fn arrow_count(&self) -> usize {
+    pub fn entity_count(&self, type_id: EntityTypeId) -> usize {
         self.entities.iter().flatten()
-            .filter(|e| e.type_id == EntityTypeId(3))
+            .filter(|e| e.type_id == type_id)
             .count()
     }
 

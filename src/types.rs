@@ -37,78 +37,6 @@ impl Direction {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(usize)]
-pub enum Action {
-    Noop = 0,
-    MoveLeft = 1,
-    MoveRight = 2,
-    MoveUp = 3,
-    MoveDown = 4,
-    Do = 5,
-    Sleep = 6,
-    PlaceStone = 7,
-    PlaceTable = 8,
-    PlaceFurnace = 9,
-    PlacePlant = 10,
-    MakeWoodPickaxe = 11,
-    MakeStonePickaxe = 12,
-    MakeIronPickaxe = 13,
-    MakeWoodSword = 14,
-    MakeStoneSword = 15,
-    MakeIronSword = 16,
-}
-
-pub const ACTIONS: [Action; 17] = [
-    Action::Noop,
-    Action::MoveLeft,
-    Action::MoveRight,
-    Action::MoveUp,
-    Action::MoveDown,
-    Action::Do,
-    Action::Sleep,
-    Action::PlaceStone,
-    Action::PlaceTable,
-    Action::PlaceFurnace,
-    Action::PlacePlant,
-    Action::MakeWoodPickaxe,
-    Action::MakeStonePickaxe,
-    Action::MakeIronPickaxe,
-    Action::MakeWoodSword,
-    Action::MakeStoneSword,
-    Action::MakeIronSword,
-];
-
-pub const ACTION_NAMES: [&str; 17] = [
-    "noop",
-    "move_left",
-    "move_right",
-    "move_up",
-    "move_down",
-    "do",
-    "sleep",
-    "place_stone",
-    "place_table",
-    "place_furnace",
-    "place_plant",
-    "make_wood_pickaxe",
-    "make_stone_pickaxe",
-    "make_iron_pickaxe",
-    "make_wood_sword",
-    "make_stone_sword",
-    "make_iron_sword",
-];
-
-impl Action {
-    pub fn name(self) -> &'static str {
-        ACTION_NAMES[self as usize]
-    }
-
-    pub fn from_index(index: usize) -> Option<Self> {
-        ACTIONS.get(index).copied()
-    }
-}
-
 /// Well-known material constants matching the default config order.
 /// These provide named constants for built-in materials while allowing
 /// the Registry to define additional materials dynamically.
@@ -212,27 +140,6 @@ pub enum ItemKind {
     IronSword = 15,
 }
 
-pub const ITEM_COUNT: usize = 16;
-
-pub const ITEM_ORDER: [ItemKind; ITEM_COUNT] = [
-    ItemKind::Health,
-    ItemKind::Food,
-    ItemKind::Drink,
-    ItemKind::Energy,
-    ItemKind::Sapling,
-    ItemKind::Wood,
-    ItemKind::Stone,
-    ItemKind::Coal,
-    ItemKind::Iron,
-    ItemKind::Diamond,
-    ItemKind::WoodPickaxe,
-    ItemKind::StonePickaxe,
-    ItemKind::IronPickaxe,
-    ItemKind::WoodSword,
-    ItemKind::StoneSword,
-    ItemKind::IronSword,
-];
-
 impl ItemKind {
     pub fn from_name(name: &str) -> Option<ItemKind> {
         match name {
@@ -279,118 +186,6 @@ impl ItemKind {
 
     pub fn id(self) -> ItemId {
         ItemId(self as u16)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(usize)]
-pub enum Achievement {
-    CollectCoal = 0,
-    CollectDiamond = 1,
-    CollectDrink = 2,
-    CollectIron = 3,
-    CollectSapling = 4,
-    CollectStone = 5,
-    CollectWood = 6,
-    DefeatSkeleton = 7,
-    DefeatZombie = 8,
-    EatCow = 9,
-    EatPlant = 10,
-    MakeIronPickaxe = 11,
-    MakeIronSword = 12,
-    MakeStonePickaxe = 13,
-    MakeStoneSword = 14,
-    MakeWoodPickaxe = 15,
-    MakeWoodSword = 16,
-    PlaceFurnace = 17,
-    PlacePlant = 18,
-    PlaceStone = 19,
-    PlaceTable = 20,
-    WakeUp = 21,
-}
-
-pub const ACHIEVEMENT_COUNT: usize = 22;
-
-#[cfg(test)]
-pub const ACHIEVEMENTS: [Achievement; ACHIEVEMENT_COUNT] = [
-    Achievement::CollectCoal,
-    Achievement::CollectDiamond,
-    Achievement::CollectDrink,
-    Achievement::CollectIron,
-    Achievement::CollectSapling,
-    Achievement::CollectStone,
-    Achievement::CollectWood,
-    Achievement::DefeatSkeleton,
-    Achievement::DefeatZombie,
-    Achievement::EatCow,
-    Achievement::EatPlant,
-    Achievement::MakeIronPickaxe,
-    Achievement::MakeIronSword,
-    Achievement::MakeStonePickaxe,
-    Achievement::MakeStoneSword,
-    Achievement::MakeWoodPickaxe,
-    Achievement::MakeWoodSword,
-    Achievement::PlaceFurnace,
-    Achievement::PlacePlant,
-    Achievement::PlaceStone,
-    Achievement::PlaceTable,
-    Achievement::WakeUp,
-];
-
-impl Achievement {
-    pub fn from_name(name: &str) -> Option<Achievement> {
-        match name {
-            "collect_coal" => Some(Achievement::CollectCoal),
-            "collect_diamond" => Some(Achievement::CollectDiamond),
-            "collect_drink" => Some(Achievement::CollectDrink),
-            "collect_iron" => Some(Achievement::CollectIron),
-            "collect_sapling" => Some(Achievement::CollectSapling),
-            "collect_stone" => Some(Achievement::CollectStone),
-            "collect_wood" => Some(Achievement::CollectWood),
-            "defeat_skeleton" => Some(Achievement::DefeatSkeleton),
-            "defeat_zombie" => Some(Achievement::DefeatZombie),
-            "eat_cow" => Some(Achievement::EatCow),
-            "eat_plant" => Some(Achievement::EatPlant),
-            "make_iron_pickaxe" => Some(Achievement::MakeIronPickaxe),
-            "make_iron_sword" => Some(Achievement::MakeIronSword),
-            "make_stone_pickaxe" => Some(Achievement::MakeStonePickaxe),
-            "make_stone_sword" => Some(Achievement::MakeStoneSword),
-            "make_wood_pickaxe" => Some(Achievement::MakeWoodPickaxe),
-            "make_wood_sword" => Some(Achievement::MakeWoodSword),
-            "place_furnace" => Some(Achievement::PlaceFurnace),
-            "place_plant" => Some(Achievement::PlacePlant),
-            "place_stone" => Some(Achievement::PlaceStone),
-            "place_table" => Some(Achievement::PlaceTable),
-            "wake_up" => Some(Achievement::WakeUp),
-            _ => None,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Achievement::CollectCoal => "collect_coal",
-            Achievement::CollectDiamond => "collect_diamond",
-            Achievement::CollectDrink => "collect_drink",
-            Achievement::CollectIron => "collect_iron",
-            Achievement::CollectSapling => "collect_sapling",
-            Achievement::CollectStone => "collect_stone",
-            Achievement::CollectWood => "collect_wood",
-            Achievement::DefeatSkeleton => "defeat_skeleton",
-            Achievement::DefeatZombie => "defeat_zombie",
-            Achievement::EatCow => "eat_cow",
-            Achievement::EatPlant => "eat_plant",
-            Achievement::MakeIronPickaxe => "make_iron_pickaxe",
-            Achievement::MakeIronSword => "make_iron_sword",
-            Achievement::MakeStonePickaxe => "make_stone_pickaxe",
-            Achievement::MakeStoneSword => "make_stone_sword",
-            Achievement::MakeWoodPickaxe => "make_wood_pickaxe",
-            Achievement::MakeWoodSword => "make_wood_sword",
-            Achievement::PlaceFurnace => "place_furnace",
-            Achievement::PlacePlant => "place_plant",
-            Achievement::PlaceStone => "place_stone",
-            Achievement::PlaceTable => "place_table",
-            Achievement::WakeUp => "wake_up",
-        }
     }
 }
 
@@ -445,12 +240,6 @@ impl Inventory {
     }
 }
 
-impl Default for Inventory {
-    fn default() -> Self {
-        Self::new(ITEM_COUNT)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AchievementProgress {
     counts: Vec<u32>,
@@ -473,18 +262,6 @@ impl AchievementProgress {
 
     pub fn len(&self) -> usize {
         self.counts.len()
-    }
-
-    /// Check if a named achievement is unlocked (backward compat via Achievement enum).
-    pub fn unlocked(&self, name: &str) -> bool {
-        Achievement::from_name(name)
-            .map_or(false, |a| self.counts.get(a as usize).copied().unwrap_or(0) > 0)
-    }
-}
-
-impl Default for AchievementProgress {
-    fn default() -> Self {
-        Self::new(ACHIEVEMENT_COUNT)
     }
 }
 

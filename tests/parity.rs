@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use crafter_rs::{
-    ACTION_NAMES, Action, Direction, Env, EnvConfig, Frame, ITEM_ORDER, ItemKind,
-    Material, SemanticGrid,
+    Direction, Env, EnvConfig, Frame, Material, SemanticGrid,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -158,8 +157,9 @@ fn reference_action_names_and_daylight_timeline_match() {
     let mut env = Env::default();
     env.reset();
 
-    let action_names: Vec<_> = ACTION_NAMES.into_iter().map(str::to_string).collect();
-    assert_eq!(action_names, fixture.action_names);
+    let action_names = env.action_names();
+    let action_name_strings: Vec<String> = action_names.iter().map(|s| s.to_string()).collect();
+    assert_eq!(action_name_strings, fixture.action_names);
 
     assert_eq!(fixture.daylight_timeline.len(), 4);
     assert_eq!(fixture.daylight_timeline[0].label.as_deref(), Some("reset"));
@@ -170,8 +170,9 @@ fn reference_action_names_and_daylight_timeline_match() {
     );
 
     for point in fixture.daylight_timeline.iter().skip(1) {
-        let action = action_by_name(point.action.as_deref().expect("missing action"));
-        env.step(action);
+        let action_name = point.action.as_deref().expect("missing action");
+        let result = env.step_by_name(action_name).expect("unknown action");
+        let _ = result;
         assert_daylight_close(
             env.world().daylight(),
             point.daylight,
@@ -269,7 +270,7 @@ fn reference_step_scenarios_match() {
             .zip(scenario.snapshots.iter())
             .enumerate()
         {
-            let result = env.step(action_by_name(action_name));
+            let result = env.step_by_name(action_name).expect("unknown action");
             compare_snapshot(
                 &format!("{} step {}", scenario.name, index + 1),
                 &env,
@@ -337,7 +338,9 @@ fn env_from_setup(setup: &ScenarioSetup) -> Env {
         env.player_mut().set_last_health(last_health);
     }
     for (name, value) in &setup.player.inventory {
-        env.player_mut().set_item(item_by_name(name).id(), *value);
+        let item_id = env.rules().registry.item_id(name)
+            .unwrap_or_else(|| panic!("unknown item in fixture: {name}"));
+        env.player_mut().set_item(item_id, *value);
     }
 
     for patch in &setup.materials {
@@ -361,17 +364,11 @@ fn spawn_object(env: &mut Env, object: &ObjectSpec) {
         .unwrap_or_else(|| panic!("unsupported object kind in fixture: {}", object.kind));
     let def = env.rules().entity_def(type_id);
     let health = def.health;
-    match object.kind.as_str() {
-        "cow" => env.world_mut().spawn_cow(object.pos, health),
-        "zombie" => env.world_mut().spawn_zombie(object.pos, health),
-        "skeleton" => env.world_mut().spawn_skeleton(object.pos, health),
-        "plant" => env.world_mut().spawn_plant(object.pos, health, 300),
-        "arrow" => env.world_mut().spawn_arrow(
-            object.pos,
-            direction_by_name(object.facing.as_deref().expect("arrow missing facing")),
-        ),
-        "fence" => env.world_mut().spawn_fence(object.pos),
-        kind => panic!("unsupported object kind in fixture: {kind}"),
+    if object.facing.is_some() {
+        let facing = direction_by_name(object.facing.as_deref().unwrap());
+        env.world_mut().spawn_entity_facing(object.pos, type_id, facing);
+    } else {
+        env.world_mut().spawn_entity(object.pos, type_id, health);
     }
 }
 
@@ -460,9 +457,11 @@ fn compare_snapshot(
 }
 
 fn inventory_map(env: &Env) -> BTreeMap<String, i32> {
-    ITEM_ORDER
-        .into_iter()
-        .map(|kind| (kind.name().to_string(), env.player().item(kind.id())))
+    env.rules()
+        .registry
+        .items
+        .iter()
+        .map(|item_def| (item_def.name.clone(), env.player().item(item_def.id)))
         .collect()
 }
 
@@ -512,29 +511,6 @@ fn tile_pixels(frame: &Frame, unit: usize, tile_x: usize, tile_y: usize) -> Vec<
     out
 }
 
-fn action_by_name(name: &str) -> Action {
-    match name {
-        "noop" => Action::Noop,
-        "move_left" => Action::MoveLeft,
-        "move_right" => Action::MoveRight,
-        "move_up" => Action::MoveUp,
-        "move_down" => Action::MoveDown,
-        "do" => Action::Do,
-        "sleep" => Action::Sleep,
-        "place_stone" => Action::PlaceStone,
-        "place_table" => Action::PlaceTable,
-        "place_furnace" => Action::PlaceFurnace,
-        "place_plant" => Action::PlacePlant,
-        "make_wood_pickaxe" => Action::MakeWoodPickaxe,
-        "make_stone_pickaxe" => Action::MakeStonePickaxe,
-        "make_iron_pickaxe" => Action::MakeIronPickaxe,
-        "make_wood_sword" => Action::MakeWoodSword,
-        "make_stone_sword" => Action::MakeStoneSword,
-        "make_iron_sword" => Action::MakeIronSword,
-        other => panic!("unknown action in fixture: {other}"),
-    }
-}
-
 fn direction_by_name(name: &str) -> Direction {
     match name {
         "left" => Direction::Left,
@@ -560,27 +536,5 @@ fn material_by_name(name: &str) -> Material {
         "table" => Material::Table,
         "furnace" => Material::Furnace,
         other => panic!("unknown material in fixture: {other}"),
-    }
-}
-
-fn item_by_name(name: &str) -> ItemKind {
-    match name {
-        "health" => ItemKind::Health,
-        "food" => ItemKind::Food,
-        "drink" => ItemKind::Drink,
-        "energy" => ItemKind::Energy,
-        "sapling" => ItemKind::Sapling,
-        "wood" => ItemKind::Wood,
-        "stone" => ItemKind::Stone,
-        "coal" => ItemKind::Coal,
-        "iron" => ItemKind::Iron,
-        "diamond" => ItemKind::Diamond,
-        "wood_pickaxe" => ItemKind::WoodPickaxe,
-        "stone_pickaxe" => ItemKind::StonePickaxe,
-        "iron_pickaxe" => ItemKind::IronPickaxe,
-        "wood_sword" => ItemKind::WoodSword,
-        "stone_sword" => ItemKind::StoneSword,
-        "iron_sword" => ItemKind::IronSword,
-        other => panic!("unknown item in fixture: {other}"),
     }
 }

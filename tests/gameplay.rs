@@ -1,4 +1,4 @@
-use crafter_rs::{Action, Direction, Env, ItemKind, Material};
+use crafter_rs::{Direction, Env, ItemKind, Material};
 
 #[test]
 fn player_can_move_collect_place_and_craft() {
@@ -8,7 +8,7 @@ fn player_can_move_collect_place_and_craft() {
     env.world_mut().fill(Material::Grass.id());
     let origin = env.player_position();
 
-    let step = env.step(Action::MoveRight);
+    let step = env.step_by_name("move_right").unwrap();
     assert_eq!(env.player_position(), [origin[0] + 1, origin[1]]);
     assert_eq!(env.player().facing(), Direction::Right);
     assert!(!step.done);
@@ -17,20 +17,21 @@ fn player_can_move_collect_place_and_craft() {
     let front = [env.player_position()[0] + 1, env.player_position()[1]];
     env.world_mut().set_material(front, Material::Tree.id());
     let wood_before = env.player().item(ItemKind::Wood.id());
-    let collect_tree = env.step(Action::Do);
+    let collect_tree = env.step_by_name("do").unwrap();
     assert_eq!(env.player().item(ItemKind::Wood.id()), wood_before + 1);
     assert_eq!(env.world().material(front), Some(Material::Grass.id()));
-    assert!(collect_tree.info.achievements.unlocked("collect_wood"));
+    let collect_wood_idx = env.rules().achievement_index("collect_wood");
+    assert!(collect_tree.info.achievements.count(collect_wood_idx) > 0);
 
     env.player_mut().set_facing(Direction::Right);
     let front = [env.player_position()[0] + 1, env.player_position()[1]];
     env.world_mut().set_material(front, Material::Stone.id());
-    env.step(Action::Do);
+    env.step_by_name("do").unwrap();
     assert_eq!(env.player().item(ItemKind::Stone.id()), 0);
 
     env.player_mut().set_item(ItemKind::WoodPickaxe.id(), 1);
     env.player_mut().set_facing(Direction::Right);
-    env.step(Action::Do);
+    env.step_by_name("do").unwrap();
     assert_eq!(env.player().item(ItemKind::Stone.id()), 1);
     assert_eq!(env.world().material(front), Some(Material::Path.id()));
 
@@ -38,12 +39,12 @@ fn player_can_move_collect_place_and_craft() {
     env.player_mut().set_facing(Direction::Right);
     let front = [env.player_position()[0] + 1, env.player_position()[1]];
     env.world_mut().set_material(front, Material::Grass.id());
-    env.step(Action::PlaceTable);
+    env.step_by_name("place_table").unwrap();
     assert_eq!(env.world().material(front), Some(Material::Table.id()));
     assert_eq!(env.player().item(ItemKind::Wood.id()), 1);
 
     env.player_mut().set_item(ItemKind::Wood.id(), 2);
-    env.step(Action::MakeWoodPickaxe);
+    env.step_by_name("make_wood_pickaxe").unwrap();
     assert_eq!(env.player().item(ItemKind::WoodPickaxe.id()), 2);
     assert_eq!(env.player().item(ItemKind::Wood.id()), 1);
 }
@@ -59,7 +60,7 @@ fn survival_needs_can_reduce_and_restore_health() {
     env.player_mut().set_item(ItemKind::Drink.id(), 0);
     env.player_mut().set_item(ItemKind::Energy.id(), 0);
     for _ in 0..40 {
-        env.step(Action::Noop);
+        env.step_by_name("noop").unwrap();
     }
     assert!(env.player().health() < 8);
 
@@ -68,7 +69,7 @@ fn survival_needs_can_reduce_and_restore_health() {
     env.player_mut().set_item(ItemKind::Drink.id(), 9);
     env.player_mut().set_item(ItemKind::Energy.id(), 1);
     for _ in 0..40 {
-        env.step(Action::Sleep);
+        env.step_by_name("sleep").unwrap();
     }
     assert!(env.player().health() > 5);
 }

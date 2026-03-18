@@ -21,13 +21,12 @@ use pyo3::prelude::*;
 
 pub use config::EnvConfig;
 pub use entities::Player;
-pub use game_rules::GameRules;
+pub use game_rules::{GameRules, WellKnownItems};
 pub use runner::{RunnerKey, runner_action_from_keys, runner_frame_to_buffer};
 pub use registry::{EntityTypeId, ItemId, MaterialId};
 pub use types::{
-    ACHIEVEMENT_COUNT, ACTION_NAMES, ACTIONS, Achievement, AchievementProgress, Action, Direction,
-    Frame, ITEM_COUNT, ITEM_ORDER, Inventory, ItemKind, Material, Position, SemanticGrid, StepInfo,
-    StepResult,
+    AchievementProgress, Direction, Frame, Inventory, ItemKind, Material, Position, SemanticGrid,
+    StepInfo, StepResult,
 };
 pub use world::World;
 
@@ -57,7 +56,8 @@ impl Env {
         let center = [config.area[0] / 2, config.area[1] / 2];
         let inventory = Inventory::from_initial(&rules.item_initial);
         let ach_count = rules.achievement_count();
-        let player = Player::with_inventory(center, inventory, ach_count);
+        let health_id = rules.well_known.health;
+        let player = Player::with_inventory(center, inventory, ach_count, health_id);
         Self {
             world: World::new(config.area, [12, 12]),
             config,
@@ -85,15 +85,17 @@ impl Env {
         self.update_time();
         let inventory = Inventory::from_initial(&self.rules.item_initial);
         let ach_count = self.rules.achievement_count();
-        self.player = Player::with_inventory(center, inventory, ach_count);
+        let health_id = self.rules.well_known.health;
+        self.player = Player::with_inventory(center, inventory, ach_count, health_id);
         self.last_health = self.player.health();
         self.unlocked.clear();
         worldgen::generate_world(&mut self.world, center, &self.rules);
         self.observation()
     }
 
-    pub fn step(&mut self, action: Action) -> StepResult {
-        self.step_by_index(action as usize)
+    pub fn step_by_name(&mut self, name: &str) -> Option<StepResult> {
+        let index = self.rules.action_index(name)?;
+        Some(self.step_by_index(index))
     }
 
     pub fn step_by_index(&mut self, action_index: usize) -> StepResult {
@@ -217,8 +219,8 @@ impl Env {
 
     fn update_player(&mut self, mut action_index: usize) {
         if self.player.sleeping() {
-            if self.player.item(ItemKind::Energy.id()) < 9 {
-                action_index = Action::Sleep as usize;
+            if self.player.item(self.rules.well_known.energy) < 9 {
+                action_index = self.rules.sleep_action_index;
             } else {
                 self.player.set_sleeping(false);
                 let wake_up = self.rules.achievement_index("wake_up");
@@ -232,7 +234,7 @@ impl Env {
             game_rules::ActionKind::Move(dir) => self.move_player(dir),
             game_rules::ActionKind::Do => self.player_do(),
             game_rules::ActionKind::Sleep => {
-                if self.player.item(ItemKind::Energy.id()) < 9 {
+                if self.player.item(self.rules.well_known.energy) < 9 {
                     self.player.set_sleeping(true);
                 }
             }
@@ -433,6 +435,7 @@ impl Env {
 
     fn update_life_stats(&mut self) {
         let pb = &self.rules.balance.player;
+        let wk = &self.rules.well_known;
         let sleep_factor = if self.player.sleeping() {
             pb.sleep_consumption_factor
         } else {
@@ -441,12 +444,12 @@ impl Env {
         *self.player.hunger_mut() += sleep_factor;
         if self.player.hunger() > pb.hunger_threshold {
             *self.player.hunger_mut() = 0.0;
-            self.player.inventory_mut().add_item(ItemKind::Food.id(), -1);
+            self.player.inventory_mut().add_item(wk.food, -1);
         }
         *self.player.thirst_mut() += sleep_factor;
         if self.player.thirst() > pb.thirst_threshold {
             *self.player.thirst_mut() = 0.0;
-            self.player.inventory_mut().add_item(ItemKind::Drink.id(), -1);
+            self.player.inventory_mut().add_item(wk.drink, -1);
         }
         if self.player.sleeping() {
             *self.player.fatigue_mut() = (self.player.fatigue() - 1).min(0);
@@ -455,20 +458,21 @@ impl Env {
         }
         if self.player.fatigue() < pb.fatigue_min {
             *self.player.fatigue_mut() = 0;
-            self.player.inventory_mut().add_item(ItemKind::Energy.id(), 1);
+            self.player.inventory_mut().add_item(wk.energy, 1);
         }
         if self.player.fatigue() > pb.fatigue_max {
             *self.player.fatigue_mut() = 0;
-            self.player.inventory_mut().add_item(ItemKind::Energy.id(), -1);
+            self.player.inventory_mut().add_item(wk.energy, -1);
         }
     }
 
     fn degen_or_regen_health(&mut self) {
         let pb = &self.rules.balance.player;
+        let wk = &self.rules.well_known;
         let necessities = [
-            self.player.item(ItemKind::Food.id()) > 0,
-            self.player.item(ItemKind::Drink.id()) > 0,
-            self.player.item(ItemKind::Energy.id()) > 0 || self.player.sleeping(),
+            self.player.item(wk.food) > 0,
+            self.player.item(wk.drink) > 0,
+            self.player.item(wk.energy) > 0 || self.player.sleeping(),
         ];
         if necessities.into_iter().all(|ok| ok) {
             *self.player.recover_mut() += if self.player.sleeping() {

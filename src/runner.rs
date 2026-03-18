@@ -1,4 +1,4 @@
-use crate::{Action, Frame};
+use crate::Frame;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RunnerKey {
@@ -20,41 +20,41 @@ pub enum RunnerKey {
     MakeIronSword,
 }
 
-pub fn runner_action_from_keys(keys: &[RunnerKey]) -> Action {
+pub fn runner_action_from_keys(keys: &[RunnerKey]) -> &'static str {
     if keys.contains(&RunnerKey::Do) {
-        Action::Do
+        "do"
     } else if keys.contains(&RunnerKey::Sleep) {
-        Action::Sleep
+        "sleep"
     } else if keys.contains(&RunnerKey::PlaceStone) {
-        Action::PlaceStone
+        "place_stone"
     } else if keys.contains(&RunnerKey::PlaceTable) {
-        Action::PlaceTable
+        "place_table"
     } else if keys.contains(&RunnerKey::PlaceFurnace) {
-        Action::PlaceFurnace
+        "place_furnace"
     } else if keys.contains(&RunnerKey::PlacePlant) {
-        Action::PlacePlant
+        "place_plant"
     } else if keys.contains(&RunnerKey::MakeWoodPickaxe) {
-        Action::MakeWoodPickaxe
+        "make_wood_pickaxe"
     } else if keys.contains(&RunnerKey::MakeStonePickaxe) {
-        Action::MakeStonePickaxe
+        "make_stone_pickaxe"
     } else if keys.contains(&RunnerKey::MakeIronPickaxe) {
-        Action::MakeIronPickaxe
+        "make_iron_pickaxe"
     } else if keys.contains(&RunnerKey::MakeWoodSword) {
-        Action::MakeWoodSword
+        "make_wood_sword"
     } else if keys.contains(&RunnerKey::MakeStoneSword) {
-        Action::MakeStoneSword
+        "make_stone_sword"
     } else if keys.contains(&RunnerKey::MakeIronSword) {
-        Action::MakeIronSword
+        "make_iron_sword"
     } else if keys.contains(&RunnerKey::Left) {
-        Action::MoveLeft
+        "move_left"
     } else if keys.contains(&RunnerKey::Right) {
-        Action::MoveRight
+        "move_right"
     } else if keys.contains(&RunnerKey::Up) {
-        Action::MoveUp
+        "move_up"
     } else if keys.contains(&RunnerKey::Down) {
-        Action::MoveDown
+        "move_down"
     } else {
-        Action::Noop
+        "noop"
     }
 }
 

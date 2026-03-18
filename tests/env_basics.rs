@@ -1,4 +1,4 @@
-use crafter_rs::{Action, Env, ItemKind, Material};
+use crafter_rs::{Env, ItemKind, Material};
 
 #[test]
 fn env_reset_initializes_default_spaces() {
@@ -46,7 +46,8 @@ fn env_accepts_action_indices() {
     env.world_mut().fill(Material::Grass.id());
 
     let origin = env.player_position();
-    let result = env.step_index(Action::MoveRight as usize);
+    let move_right = env.rules().action_index("move_right").unwrap();
+    let result = env.step_index(move_right);
     assert!(result.is_some());
     assert_eq!(env.player_position(), [origin[0] + 1, origin[1]]);
 }

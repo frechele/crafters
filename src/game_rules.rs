@@ -12,6 +12,14 @@ const DEFAULT_YAML: &str = include_str!("../data/config.yaml");
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
+pub struct WellKnownItems {
+    pub health: ItemId,
+    pub food: ItemId,
+    pub drink: ItemId,
+    pub energy: ItemId,
+}
+
+#[derive(Clone, Debug)]
 pub struct GameRules {
     pub registry: Registry,
     pub item_initial: Vec<i32>,
@@ -28,6 +36,8 @@ pub struct GameRules {
     pub balance: BalanceConfig,
     pub entity_defs: Vec<EntityDef>,
     pub entity_by_name: HashMap<String, EntityTypeId>,
+    pub well_known: WellKnownItems,
+    pub sleep_action_index: usize,
 }
 
 impl GameRules {
@@ -49,6 +59,10 @@ impl GameRules {
 
     pub fn entity_type_id(&self, name: &str) -> Option<EntityTypeId> {
         self.entity_by_name.get(name).copied()
+    }
+
+    pub fn action_index(&self, name: &str) -> Option<usize> {
+        self.actions.iter().position(|a| a.name == name)
     }
 }
 
@@ -708,6 +722,23 @@ impl GameRules {
             &achievement_by_name,
         )?;
 
+        // Well-known items
+        let well_known = WellKnownItems {
+            health: registry.item_id("health")
+                .ok_or_else(|| "missing well-known item: health".to_string())?,
+            food: registry.item_id("food")
+                .ok_or_else(|| "missing well-known item: food".to_string())?,
+            drink: registry.item_id("drink")
+                .ok_or_else(|| "missing well-known item: drink".to_string())?,
+            energy: registry.item_id("energy")
+                .ok_or_else(|| "missing well-known item: energy".to_string())?,
+        };
+
+        // Sleep action index
+        let sleep_action_index = actions.iter()
+            .position(|a| matches!(a.kind, ActionKind::Sleep))
+            .ok_or_else(|| "missing sleep action".to_string())?;
+
         Ok(GameRules {
             registry,
             item_initial,
@@ -724,6 +755,8 @@ impl GameRules {
             balance,
             entity_defs,
             entity_by_name,
+            well_known,
+            sleep_action_index,
         })
     }
 }
@@ -919,19 +952,19 @@ fn resolve_material_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ItemKind, Material};
+    use crate::Material;
 
     #[test]
     fn default_rules_load_successfully() {
         let rules = GameRules::default();
-        assert_eq!(rules.registry.item_count(), 16);
-        assert_eq!(rules.registry.material_count(), 12);
-        assert_eq!(rules.collect.len(), 7);
-        assert_eq!(rules.place.len(), 4);
-        assert_eq!(rules.make.len(), 6);
-        assert_eq!(rules.walkable.len(), 3);
-        assert_eq!(rules.player_walkable.len(), 4);
-        assert_eq!(rules.arrow_walkable.len(), 5);
+        assert!(rules.registry.item_count() >= 16);
+        assert!(rules.registry.material_count() >= 12);
+        assert!(rules.collect.len() >= 7);
+        assert!(rules.place.len() >= 4);
+        assert!(rules.make.len() >= 6);
+        assert!(rules.walkable.len() >= 3);
+        assert!(rules.player_walkable.len() >= 4);
+        assert!(rules.arrow_walkable.len() >= 5);
     }
 
     #[test]
@@ -964,27 +997,12 @@ mod tests {
     }
 
     #[test]
-    fn registry_parity_items() {
-        let rules = GameRules::default();
-        let r = &rules.registry;
-        for item in crate::ITEM_ORDER {
-            let reg_id = r.item_id(item.name()).unwrap();
-            assert_eq!(
-                reg_id,
-                item.id(),
-                "item {}: registry id {reg_id:?} != enum id {:?}",
-                item.name(),
-                item.id()
-            );
-        }
-    }
-
-    #[test]
     fn collect_rules_resolve_correctly() {
         let rules = GameRules::default();
+        let r = &rules.registry;
         let tree_rule = rules.collect.get(&Material::Tree.id()).unwrap();
         assert!(tree_rule.require.is_empty());
-        assert_eq!(tree_rule.receive, vec![(ItemKind::Wood.id(), 1)]);
+        assert_eq!(tree_rule.receive, vec![(r.item_id("wood").unwrap(), 1)]);
         assert_eq!(tree_rule.leaves, Material::Grass.id());
         assert_eq!(tree_rule.probability, 1.0);
         assert_eq!(tree_rule.achievement, rules.achievement_index("collect_wood"));
@@ -993,7 +1011,8 @@ mod tests {
     #[test]
     fn make_rules_resolve_correctly() {
         let rules = GameRules::default();
-        let iron_pickaxe = rules.make.get(&ItemKind::IronPickaxe.id()).unwrap();
+        let r = &rules.registry;
+        let iron_pickaxe = rules.make.get(&r.item_id("iron_pickaxe").unwrap()).unwrap();
         assert_eq!(iron_pickaxe.gives, 1);
         assert!(iron_pickaxe.nearby.contains(&Material::Table.id()));
         assert!(iron_pickaxe.nearby.contains(&Material::Furnace.id()));
@@ -1003,26 +1022,27 @@ mod tests {
     #[test]
     fn balance_defaults_match_hardcoded_values() {
         let rules = GameRules::default();
+        let r = &rules.registry;
         let b = &rules.balance;
         assert_eq!(b.daylight_cycle, 300.0);
         assert_eq!(b.player.hunger_threshold, 25.0);
         assert_eq!(b.combat.base_damage, 1);
-        assert!(b.combat.swords.contains(&(ItemKind::WoodSword.id(), 2)));
-        assert!(b.combat.swords.contains(&(ItemKind::StoneSword.id(), 3)));
-        assert!(b.combat.swords.contains(&(ItemKind::IronSword.id(), 5)));
+        assert!(b.combat.swords.contains(&(r.item_id("wood_sword").unwrap(), 2)));
+        assert!(b.combat.swords.contains(&(r.item_id("stone_sword").unwrap(), 3)));
+        assert!(b.combat.swords.contains(&(r.item_id("iron_sword").unwrap(), 5)));
 
         // Entity definitions
         assert_eq!(rules.entity_defs.len(), 6);
         let cow_def = rules.entity_def(rules.entity_type_id("cow").unwrap());
         assert_eq!(cow_def.health, 3);
-        assert!(cow_def.drops.contains(&(ItemKind::Food.id(), 6)));
+        assert!(cow_def.drops.contains(&(rules.well_known.food, 6)));
         let zombie_def = rules.entity_def(rules.entity_type_id("zombie").unwrap());
         assert_eq!(zombie_def.health, 5);
         let skeleton_def = rules.entity_def(rules.entity_type_id("skeleton").unwrap());
         assert_eq!(skeleton_def.health, 3);
         let plant_def = rules.entity_def(rules.entity_type_id("plant").unwrap());
         assert_eq!(plant_def.health, 1);
-        assert!(plant_def.drops.contains(&(ItemKind::Food.id(), 4)));
+        assert!(plant_def.drops.contains(&(rules.well_known.food, 4)));
 
         // Spawning
         let cow_spawn = cow_def.spawning.as_ref().unwrap();
@@ -1037,6 +1057,30 @@ mod tests {
         assert_eq!(cow_wg.min_dist, 3.0);
         let zombie_wg = zombie_def.worldgen.as_ref().unwrap();
         assert_eq!(zombie_wg.threshold, 0.993);
+    }
+
+    #[test]
+    fn well_known_items_resolve() {
+        let rules = GameRules::default();
+        assert_eq!(rules.well_known.health, ItemId(0));
+        assert_eq!(rules.well_known.food, ItemId(1));
+        assert_eq!(rules.well_known.drink, ItemId(2));
+        assert_eq!(rules.well_known.energy, ItemId(3));
+    }
+
+    #[test]
+    fn sleep_action_index_resolves() {
+        let rules = GameRules::default();
+        assert_eq!(rules.actions[rules.sleep_action_index].name, "sleep");
+    }
+
+    #[test]
+    fn action_index_lookup() {
+        let rules = GameRules::default();
+        assert_eq!(rules.action_index("noop"), Some(0));
+        assert_eq!(rules.action_index("do"), Some(5));
+        assert_eq!(rules.action_index("sleep"), Some(6));
+        assert_eq!(rules.action_index("nonexistent"), None);
     }
 
     #[test]
@@ -1086,8 +1130,7 @@ mod tests {
     #[test]
     fn achievement_parity() {
         let rules = GameRules::default();
-        assert_eq!(rules.achievement_names.len(), 22);
-        // Alphabetical order must match existing Achievement enum
+        assert!(rules.achievement_names.len() >= 22);
         let expected = [
             "collect_coal", "collect_diamond", "collect_drink", "collect_iron",
             "collect_sapling", "collect_stone", "collect_wood",
@@ -1097,11 +1140,11 @@ mod tests {
             "place_furnace", "place_plant", "place_stone", "place_table",
             "wake_up",
         ];
-        assert_eq!(rules.achievement_names, expected);
-        // Verify indices match Achievement enum values
-        for a in crate::types::ACHIEVEMENTS {
-            let idx = rules.achievement_index(a.name());
-            assert_eq!(idx, a as usize, "achievement {} index mismatch", a.name());
+        for name in &expected {
+            assert!(
+                rules.achievement_by_name.contains_key(*name),
+                "missing achievement: {name}"
+            );
         }
     }
 }

@@ -1,4 +1,4 @@
-use crafter_rs::{Env, ItemKind, Material};
+use crafter_rs::{Env, Material};
 
 #[test]
 fn render_produces_non_empty_rgb_frame_and_inventory_changes() {
@@ -9,7 +9,8 @@ fn render_produces_non_empty_rgb_frame_and_inventory_changes() {
     assert_eq!(obs.channels(), 3);
     assert!(obs.pixels().iter().any(|pixel| *pixel != 0));
 
-    env.player_mut().set_item(ItemKind::Wood.id(), 3);
+    let wood_id = env.rules().registry.item_id("wood").unwrap();
+    env.player_mut().set_item(wood_id, 3);
     let rendered = env.render(None);
     assert_ne!(obs.pixels(), rendered.pixels());
 }
@@ -22,8 +23,9 @@ fn semantic_view_distinguishes_player_and_hostiles() {
     env.world_mut().clear_objects();
 
     let player = env.player_position();
-    let shealth = env.rules().entity_def(env.rules().entity_type_id("skeleton").unwrap()).health;
-    env.world_mut().spawn_skeleton([player[0] + 1, player[1]], shealth);
+    let skel_id = env.rules().entity_type_id("skeleton").unwrap();
+    let shealth = env.rules().entity_def(skel_id).health;
+    env.world_mut().spawn_entity([player[0] + 1, player[1]], skel_id, shealth);
     let semantic = env.semantic_view();
     let unique: std::collections::HashSet<_> = semantic.cells().iter().copied().collect();
     assert!(unique.len() >= 3);

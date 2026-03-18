@@ -13,15 +13,12 @@ pub struct Player {
     thirst: f32,
     fatigue: i32,
     recover: f32,
+    health_id: ItemId,
 }
 
 impl Player {
-    pub fn new(pos: Position) -> Self {
-        Self::with_inventory(pos, Inventory::new(crate::ITEM_COUNT), crate::ACHIEVEMENT_COUNT)
-    }
-
-    pub fn with_inventory(pos: Position, inventory: Inventory, achievement_count: usize) -> Self {
-        let last_health = inventory.item(crate::ItemKind::Health.id());
+    pub fn with_inventory(pos: Position, inventory: Inventory, achievement_count: usize, health_id: ItemId) -> Self {
+        let last_health = inventory.item(health_id);
         Self {
             pos,
             facing: Direction::Down,
@@ -33,6 +30,7 @@ impl Player {
             thirst: 0.0,
             fatigue: 0,
             recover: 0.0,
+            health_id,
         }
     }
 
@@ -85,11 +83,11 @@ impl Player {
     }
 
     pub fn health(&self) -> i32 {
-        self.item(crate::ItemKind::Health.id())
+        self.item(self.health_id)
     }
 
     pub fn set_health(&mut self, value: i32) {
-        self.set_item(crate::ItemKind::Health.id(), value.max(0));
+        self.set_item(self.health_id, value.max(0));
     }
 
     pub fn last_health(&self) -> i32 {

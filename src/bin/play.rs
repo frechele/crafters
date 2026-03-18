@@ -1,5 +1,5 @@
 use crafter_rs::{
-    Env, EnvConfig, ItemKind, RunnerKey, runner_action_from_keys, runner_frame_to_buffer,
+    Env, EnvConfig, RunnerKey, runner_action_from_keys, runner_frame_to_buffer,
 };
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
@@ -40,8 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 frame = env.reset();
                 done = false;
             } else {
-                let action = runner_action_from_keys(&keys);
-                let result = env.step(action);
+                let action_name = runner_action_from_keys(&keys);
+                let result = env.step_by_name(action_name).expect("unknown action");
                 frame = result.observation;
                 done = result.done;
             }
@@ -101,21 +101,22 @@ fn map_key(key: Key) -> Option<RunnerKey> {
 }
 
 fn update_title(window: &mut Window, env: &Env, done: bool) {
+    let wk = &env.rules().well_known;
     let title = if done {
         format!(
             "Crafter RS | HP {} Food {} Drink {} Energy {} | episode over: press R or any action to reset",
             env.player().health(),
-            env.player().item(ItemKind::Food.id()),
-            env.player().item(ItemKind::Drink.id()),
-            env.player().item(ItemKind::Energy.id()),
+            env.player().item(wk.food),
+            env.player().item(wk.drink),
+            env.player().item(wk.energy),
         )
     } else {
         format!(
             "Crafter RS | HP {} Food {} Drink {} Energy {} | arrows move, space interact, E sleep, 1-4 place, Z/X/C pickaxe, A/S/D sword, N wait, R reset",
             env.player().health(),
-            env.player().item(ItemKind::Food.id()),
-            env.player().item(ItemKind::Drink.id()),
-            env.player().item(ItemKind::Energy.id()),
+            env.player().item(wk.food),
+            env.player().item(wk.drink),
+            env.player().item(wk.energy),
         )
     };
     window.set_title(&title);
