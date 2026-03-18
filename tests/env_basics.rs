@@ -11,13 +11,13 @@ fn env_reset_initializes_default_spaces() {
     assert_eq!(obs.channels(), 3);
 
     let player = env.player();
-    assert_eq!(player.item(ItemKind::Health), 9);
-    assert_eq!(player.item(ItemKind::Food), 9);
-    assert_eq!(player.item(ItemKind::Drink), 9);
-    assert_eq!(player.item(ItemKind::Energy), 9);
-    assert_eq!(player.item(ItemKind::Wood), 0);
-    assert_eq!(player.item(ItemKind::Stone), 0);
-    assert_eq!(player.item(ItemKind::WoodPickaxe), 0);
+    assert_eq!(player.item(ItemKind::Health.id()), 9);
+    assert_eq!(player.item(ItemKind::Food.id()), 9);
+    assert_eq!(player.item(ItemKind::Drink.id()), 9);
+    assert_eq!(player.item(ItemKind::Energy.id()), 9);
+    assert_eq!(player.item(ItemKind::Wood.id()), 0);
+    assert_eq!(player.item(ItemKind::Stone.id()), 0);
+    assert_eq!(player.item(ItemKind::WoodPickaxe.id()), 0);
 }
 
 #[test]
@@ -27,12 +27,11 @@ fn env_reset_builds_world_state() {
 
     assert_eq!(env.player_position(), [32, 32]);
     assert_eq!(env.world().area(), [64, 64]);
-    assert_eq!(env.world().material([32, 32]), Some(Material::Grass));
-    assert!(
-        env.world()
-            .iter_materials()
-            .all(|material| material.is_some())
-    );
+    assert_eq!(env.world().material([32, 32]), Some(Material::Grass.id()));
+    let area = env.world().area();
+    assert!((0..area[0])
+        .flat_map(|x| (0..area[1]).map(move |y| [x, y]))
+        .all(|pos| env.world().material(pos).is_some()));
 
     let semantic = env.semantic_view();
     assert_eq!(semantic.width(), 64);
@@ -44,7 +43,7 @@ fn env_reset_builds_world_state() {
 fn env_accepts_action_indices() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
 
     let origin = env.player_position();
     let result = env.step_index(Action::MoveRight as usize);

@@ -1,25 +1,34 @@
-walkable:
-  - grass
-  - path
-  - sand
+materials:
+  - {name: water, arrow_walkable: true}
+  - {name: grass, walkable: true, player_walkable: true, arrow_walkable: true}
+  - {name: stone}
+  - {name: path, walkable: true, player_walkable: true, arrow_walkable: true}
+  - {name: sand, walkable: true, player_walkable: true, arrow_walkable: true}
+  - {name: tree}
+  - {name: lava, player_walkable: true, arrow_walkable: true}
+  - {name: coal}
+  - {name: iron}
+  - {name: diamond}
+  - {name: table}
+  - {name: furnace}
 
 items:
-  health: {max: 9, initial: 9}
-  food: {max: 9, initial: 9}
-  drink: {max: 9, initial: 9}
-  energy: {max: 9, initial: 9}
-  sapling: {max: 9, initial: 0}
-  wood: {max: 9, initial: 0}
-  stone: {max: 9, initial: 0}
-  coal: {max: 9, initial: 0}
-  iron: {max: 9, initial: 0}
-  diamond: {max: 9, initial: 0}
-  wood_pickaxe: {max: 9, initial: 0}
-  stone_pickaxe: {max: 9, initial: 0}
-  iron_pickaxe: {max: 9, initial: 0}
-  wood_sword: {max: 9, initial: 0}
-  stone_sword: {max: 9, initial: 0}
-  iron_sword: {max: 9, initial: 0}
+  - {name: health, max: 9, initial: 9}
+  - {name: food, max: 9, initial: 9}
+  - {name: drink, max: 9, initial: 9}
+  - {name: energy, max: 9, initial: 9}
+  - {name: sapling, max: 9, initial: 0}
+  - {name: wood, max: 9, initial: 0}
+  - {name: stone, max: 9, initial: 0}
+  - {name: coal, max: 9, initial: 0}
+  - {name: iron, max: 9, initial: 0}
+  - {name: diamond, max: 9, initial: 0}
+  - {name: wood_pickaxe, max: 9, initial: 0}
+  - {name: stone_pickaxe, max: 9, initial: 0}
+  - {name: iron_pickaxe, max: 9, initial: 0}
+  - {name: wood_sword, max: 9, initial: 0}
+  - {name: stone_sword, max: 9, initial: 0}
+  - {name: iron_sword, max: 9, initial: 0}
 
 collect:
   tree: {require: {}, receive: {wood: 1}, leaves: grass}
@@ -43,3 +52,56 @@ make:
   wood_sword: {uses: {wood: 1}, nearby: [table], gives: 1}
   stone_sword: {uses: {wood: 1, stone: 1}, nearby: [table], gives: 1}
   iron_sword: {uses: {wood: 1, coal: 1, iron: 1}, nearby: [table, furnace], gives: 1}
+
+balance:
+  daylight_cycle: 300
+  player:
+    hunger_threshold: 25.0
+    thirst_threshold: 20.0
+    fatigue_min: -10
+    fatigue_max: 30
+    recover_gain: 25.0
+    recover_loss: -15.0
+    sleep_consumption_factor: 0.5
+    sleep_recovery_factor: 2.0
+    sleep_degeneration_factor: 0.5
+  combat:
+    base_damage: 1
+    swords:
+      wood_sword: 2
+      stone_sword: 3
+      iron_sword: 5
+
+entities:
+  cow:
+    health: 3
+    behavior: {type: passive, move_prob: 0.5}
+    drops: {food: 6}
+    on_kill: eat_cow
+    spawning: {material: grass, spawn_dist: 5, despawn_dist: 5,
+               spawn_prob: 0.01, despawn_prob: 0.1, min_space: 30, base_target: 1.0, max_target: 1.5, light_factor: 1.0}
+    worldgen: {min_dist: 3.0, threshold: 0.985, material: grass}
+  zombie:
+    health: 5
+    behavior: {type: melee, chase_dist: 8, chase_prob: 0.9, direct_chase: 0.8, damage: 2, sleeping_damage: 7, cooldown: 5}
+    on_kill: defeat_zombie
+    spawning: {material: grass, spawn_dist: 6, despawn_dist: 0,
+               spawn_prob: 0.3, despawn_prob: 0.4, min_space: 50, base_target: 3.5, light_factor: -3.0}
+    worldgen: {min_dist: 10.0, threshold: 0.993}
+  skeleton:
+    health: 3
+    behavior: {type: ranged, flee_dist: 3, shoot_dist: 5, chase_dist: 8, reload: 4,
+               flee_prob: 0.6, shoot_prob: 0.5, chase_prob: 0.3, wander_prob: 0.2, projectile: arrow}
+    on_kill: defeat_skeleton
+    spawning: {material: path, spawn_dist: 7, despawn_dist: 7,
+               spawn_prob: 0.1, despawn_prob: 0.1, min_space: 6, base_target: 1.0, max_target: 2.0}
+    worldgen: {threshold: 0.95, tunnel_only: true}
+  arrow:
+    behavior: {type: projectile, damage: 2}
+  plant:
+    health: 1
+    behavior: {type: growing, ripen_time: 300}
+    drops: {food: 4}
+    on_kill: eat_plant
+  fence:
+    behavior: {type: static}

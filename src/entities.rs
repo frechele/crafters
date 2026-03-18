@@ -1,4 +1,5 @@
-use crate::{AchievementProgress, Action, Direction, Inventory, Position};
+use crate::registry::{EntityTypeId, ItemId};
+use crate::{AchievementProgress, Direction, Inventory, Position};
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -6,7 +7,6 @@ pub struct Player {
     facing: Direction,
     inventory: Inventory,
     achievements: AchievementProgress,
-    action: Action,
     sleeping: bool,
     last_health: i32,
     hunger: f32,
@@ -17,17 +17,16 @@ pub struct Player {
 
 impl Player {
     pub fn new(pos: Position) -> Self {
-        Self::with_inventory(pos, Inventory::new())
+        Self::with_inventory(pos, Inventory::new(crate::ITEM_COUNT), crate::ACHIEVEMENT_COUNT)
     }
 
-    pub fn with_inventory(pos: Position, inventory: Inventory) -> Self {
-        let last_health = inventory.item(crate::ItemKind::Health);
+    pub fn with_inventory(pos: Position, inventory: Inventory, achievement_count: usize) -> Self {
+        let last_health = inventory.item(crate::ItemKind::Health.id());
         Self {
             pos,
             facing: Direction::Down,
             inventory,
-            achievements: AchievementProgress::new(),
-            action: Action::Noop,
+            achievements: AchievementProgress::new(achievement_count),
             sleeping: false,
             last_health,
             hunger: 0.0,
@@ -61,14 +60,6 @@ impl Player {
         self.sleeping = sleeping;
     }
 
-    pub fn action(&self) -> Action {
-        self.action
-    }
-
-    pub fn set_action(&mut self, action: Action) {
-        self.action = action;
-    }
-
     pub fn inventory(&self) -> &Inventory {
         &self.inventory
     }
@@ -85,20 +76,20 @@ impl Player {
         &mut self.achievements
     }
 
-    pub fn item(&self, kind: crate::ItemKind) -> i32 {
-        self.inventory.item(kind)
+    pub fn item(&self, id: ItemId) -> i32 {
+        self.inventory.item(id)
     }
 
-    pub fn set_item(&mut self, kind: crate::ItemKind, value: i32) {
-        self.inventory.set_item(kind, value);
+    pub fn set_item(&mut self, id: ItemId, value: i32) {
+        self.inventory.set_item(id, value);
     }
 
     pub fn health(&self) -> i32 {
-        self.item(crate::ItemKind::Health)
+        self.item(crate::ItemKind::Health.id())
     }
 
     pub fn set_health(&mut self, value: i32) {
-        self.set_item(crate::ItemKind::Health, value.max(0));
+        self.set_item(crate::ItemKind::Health.id(), value.max(0));
     }
 
     pub fn last_health(&self) -> i32 {
@@ -159,105 +150,34 @@ impl Player {
     }
 }
 
+/// Unified entity struct replacing Cow, Zombie, Skeleton, Arrow, Plant, Fence.
 #[derive(Clone, Debug)]
-pub struct Cow {
+pub struct Entity {
+    pub type_id: EntityTypeId,
     pub pos: Position,
     pub health: i32,
-}
-
-impl Cow {
-    pub fn new(pos: Position) -> Self {
-        Self { pos, health: 3 }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Zombie {
-    pub pos: Position,
-    pub health: i32,
-    pub cooldown: i32,
-}
-
-impl Zombie {
-    pub fn new(pos: Position) -> Self {
-        Self {
-            pos,
-            health: 5,
-            cooldown: 0,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Skeleton {
-    pub pos: Position,
-    pub health: i32,
-    pub reload: i32,
-}
-
-impl Skeleton {
-    pub fn new(pos: Position) -> Self {
-        Self {
-            pos,
-            health: 3,
-            reload: 0,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Arrow {
-    pub pos: Position,
     pub facing: Direction,
+    pub timer: i32,  // cooldown for melee, reload for ranged, grown for growing
 }
 
-impl Arrow {
-    pub fn new(pos: Position, facing: Direction) -> Self {
-        Self { pos, facing }
-    }
-
-    pub(crate) fn texture_name(&self) -> &'static str {
-        match self.facing {
-            Direction::Left => "arrow-left",
-            Direction::Right => "arrow-right",
-            Direction::Up => "arrow-up",
-            Direction::Down => "arrow-down",
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Plant {
-    pub pos: Position,
-    pub health: i32,
-    pub grown: i32,
-}
-
-impl Plant {
-    pub fn new(pos: Position) -> Self {
+impl Entity {
+    pub fn new(type_id: EntityTypeId, pos: Position, health: i32) -> Self {
         Self {
+            type_id,
             pos,
-            health: 1,
-            grown: 0,
+            health,
+            facing: Direction::Down,
+            timer: 0,
         }
     }
 
-    pub fn ripe(&self) -> bool {
-        self.grown > 300
-    }
-
-    pub(crate) fn texture_name(&self) -> &'static str {
-        if self.ripe() { "plant-ripe" } else { "plant" }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Fence {
-    pub pos: Position,
-}
-
-impl Fence {
-    pub fn new(pos: Position) -> Self {
-        Self { pos }
+    pub fn with_facing(type_id: EntityTypeId, pos: Position, facing: Direction) -> Self {
+        Self {
+            type_id,
+            pos,
+            health: 0,
+            facing,
+            timer: 0,
+        }
     }
 }

@@ -7,17 +7,17 @@ fn achievements_affect_reward_once_and_length_can_end_episode() {
         ..EnvConfig::default()
     });
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
 
     env.player_mut().set_facing(Direction::Right);
     let front = [env.player_position()[0] + 1, env.player_position()[1]];
-    env.world_mut().set_material(front, Material::Tree);
+    env.world_mut().set_material(front, Material::Tree.id());
     let first = env.step(Action::Do);
     assert!(first.reward >= 1.0);
     assert!(first.info.achievements.unlocked("collect_wood"));
 
     env.player_mut().set_facing(Direction::Right);
-    env.world_mut().set_material(front, Material::Tree);
+    env.world_mut().set_material(front, Material::Tree.id());
     let second = env.step(Action::Do);
     assert!(second.reward < 1.0);
     assert!(second.done);
@@ -27,11 +27,12 @@ fn achievements_affect_reward_once_and_length_can_end_episode() {
 fn zombie_and_skeleton_updates_affect_player_and_world() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     let player = env.player_position();
-    env.world_mut().spawn_zombie([player[0] + 1, player[1]]);
+    let zhealth = env.rules().entity_def(env.rules().entity_type_id("zombie").unwrap()).health;
+    env.world_mut().spawn_zombie([player[0] + 1, player[1]], zhealth);
     let health_before = env.player().health();
     let mut zombie_rewards = Vec::new();
     for _ in 0..10 {
@@ -45,7 +46,8 @@ fn zombie_and_skeleton_updates_affect_player_and_world() {
     assert!(zombie_rewards.into_iter().any(|reward| reward < 0.0));
 
     env.world_mut().clear_objects();
-    env.world_mut().spawn_skeleton([player[0] + 4, player[1]]);
+    let shealth = env.rules().entity_def(env.rules().entity_type_id("skeleton").unwrap()).health;
+    env.world_mut().spawn_skeleton([player[0] + 4, player[1]], shealth);
     for _ in 0..20 {
         env.step(Action::Noop);
         if env.world().arrow_count() > 0 {
@@ -61,15 +63,16 @@ fn chunk_balancing_can_spawn_skeletons_in_populated_path_chunks() {
         area: [64, 64],
         ..EnvConfig::default()
     });
-    env.world_mut().fill(Material::Path);
+    env.world_mut().fill(Material::Path.id());
     env.world_mut().clear_objects();
 
     let player = env.player_position();
+    let cow_health = env.rules().entity_def(env.rules().entity_type_id("cow").unwrap()).health;
     for chunk_x in (0..64).step_by(12) {
         for chunk_y in (0..64).step_by(12) {
             let pos = [(chunk_x + 1).min(63), (chunk_y + 1).min(63)];
             if pos != player {
-                env.world_mut().spawn_cow(pos);
+                env.world_mut().spawn_cow(pos, cow_health);
             }
         }
     }
@@ -90,15 +93,17 @@ fn chunk_balancing_can_spawn_zombies_in_populated_grass_chunks() {
         area: [64, 64],
         ..EnvConfig::default()
     });
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     let player = env.player_position();
+    let plant_def = env.rules().entity_def(env.rules().entity_type_id("plant").unwrap());
+    let plant_health = plant_def.health;
     for chunk_x in (0..64).step_by(12) {
         for chunk_y in (0..64).step_by(12) {
             let pos = [(chunk_x + 1).min(63), (chunk_y + 1).min(63)];
             if pos != player {
-                env.world_mut().spawn_plant(pos);
+                env.world_mut().spawn_plant(pos, plant_health, 300);
             }
         }
     }
@@ -117,12 +122,13 @@ fn chunk_balancing_can_spawn_zombies_in_populated_grass_chunks() {
 fn lethal_damage_marks_done_and_zero_discount() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     let player = env.player_position();
     env.player_mut().set_health(1);
-    env.world_mut().spawn_zombie([player[0] + 1, player[1]]);
+    let zhealth = env.rules().entity_def(env.rules().entity_type_id("zombie").unwrap()).health;
+    env.world_mut().spawn_zombie([player[0] + 1, player[1]], zhealth);
     let mut result = env.step(Action::Noop);
     for _ in 0..10 {
         if result.done {

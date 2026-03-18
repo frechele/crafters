@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use crafter_rs::{
-    ACTION_NAMES, Achievement, Action, Direction, Env, EnvConfig, Frame, ITEM_ORDER, ItemKind,
+    ACTION_NAMES, Action, Direction, Env, EnvConfig, Frame, ITEM_ORDER, ItemKind,
     Material, SemanticGrid,
 };
 use serde::Deserialize;
@@ -309,7 +309,7 @@ fn env_from_setup(setup: &ScenarioSetup) -> Env {
         seed: setup.config.seed,
     });
     env.reset();
-    env.world_mut().fill(material_by_name(&setup.world_fill));
+    env.world_mut().fill(material_by_name(&setup.world_fill).id());
     env.world_mut().clear_objects();
 
     if let Some(pos) = setup.player.pos {
@@ -337,12 +337,12 @@ fn env_from_setup(setup: &ScenarioSetup) -> Env {
         env.player_mut().set_last_health(last_health);
     }
     for (name, value) in &setup.player.inventory {
-        env.player_mut().set_item(item_by_name(name), *value);
+        env.player_mut().set_item(item_by_name(name).id(), *value);
     }
 
     for patch in &setup.materials {
         env.world_mut()
-            .set_material(patch.pos, material_by_name(&patch.material));
+            .set_material(patch.pos, material_by_name(&patch.material).id());
     }
 
     if let Some(daylight) = setup.daylight {
@@ -357,15 +357,20 @@ fn env_from_setup(setup: &ScenarioSetup) -> Env {
 }
 
 fn spawn_object(env: &mut Env, object: &ObjectSpec) {
+    let type_id = env.rules().entity_type_id(&object.kind)
+        .unwrap_or_else(|| panic!("unsupported object kind in fixture: {}", object.kind));
+    let def = env.rules().entity_def(type_id);
+    let health = def.health;
     match object.kind.as_str() {
-        "cow" => env.world_mut().spawn_cow(object.pos),
-        "zombie" => env.world_mut().spawn_zombie(object.pos),
-        "skeleton" => env.world_mut().spawn_skeleton(object.pos),
-        "plant" => env.world_mut().spawn_plant(object.pos),
+        "cow" => env.world_mut().spawn_cow(object.pos, health),
+        "zombie" => env.world_mut().spawn_zombie(object.pos, health),
+        "skeleton" => env.world_mut().spawn_skeleton(object.pos, health),
+        "plant" => env.world_mut().spawn_plant(object.pos, health, 300),
         "arrow" => env.world_mut().spawn_arrow(
             object.pos,
             direction_by_name(object.facing.as_deref().expect("arrow missing facing")),
         ),
+        "fence" => env.world_mut().spawn_fence(object.pos),
         kind => panic!("unsupported object kind in fixture: {kind}"),
     }
 }
@@ -457,43 +462,17 @@ fn compare_snapshot(
 fn inventory_map(env: &Env) -> BTreeMap<String, i32> {
     ITEM_ORDER
         .into_iter()
-        .map(|kind| (kind.name().to_string(), env.player().item(kind)))
+        .map(|kind| (kind.name().to_string(), env.player().item(kind.id())))
         .collect()
 }
 
 fn achievement_map(env: &Env) -> BTreeMap<String, u32> {
-    [
-        Achievement::CollectCoal,
-        Achievement::CollectDiamond,
-        Achievement::CollectDrink,
-        Achievement::CollectIron,
-        Achievement::CollectSapling,
-        Achievement::CollectStone,
-        Achievement::CollectWood,
-        Achievement::DefeatSkeleton,
-        Achievement::DefeatZombie,
-        Achievement::EatCow,
-        Achievement::EatPlant,
-        Achievement::MakeIronPickaxe,
-        Achievement::MakeIronSword,
-        Achievement::MakeStonePickaxe,
-        Achievement::MakeStoneSword,
-        Achievement::MakeWoodPickaxe,
-        Achievement::MakeWoodSword,
-        Achievement::PlaceFurnace,
-        Achievement::PlacePlant,
-        Achievement::PlaceStone,
-        Achievement::PlaceTable,
-        Achievement::WakeUp,
-    ]
-    .into_iter()
-    .map(|achievement| {
-        (
-            achievement.name().to_string(),
-            env.player().achievements().count(achievement),
-        )
-    })
-    .collect()
+    env.rules()
+        .achievement_names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.clone(), env.player().achievements().count(i)))
+        .collect()
 }
 
 fn sha256_frame(frame: &Frame) -> String {

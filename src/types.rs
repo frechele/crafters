@@ -1,3 +1,5 @@
+pub use crate::registry::{ItemId, MaterialId};
+
 pub type Position = [usize; 2];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -107,6 +109,9 @@ impl Action {
     }
 }
 
+/// Well-known material constants matching the default config order.
+/// These provide named constants for built-in materials while allowing
+/// the Registry to define additional materials dynamically.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u16)]
 pub enum Material {
@@ -158,32 +163,34 @@ impl Material {
         Material::Furnace,
     ];
 
-    pub fn id(self) -> u16 {
-        self as u16
+    pub fn id(self) -> MaterialId {
+        MaterialId(self as u16)
     }
 
     pub fn is_walkable(self) -> bool {
         matches!(self, Material::Grass | Material::Path | Material::Sand)
     }
 
-    pub(crate) fn texture_name(self) -> &'static str {
-        match self {
-            Material::Water => "water",
-            Material::Grass => "grass",
-            Material::Stone => "stone",
-            Material::Path => "path",
-            Material::Sand => "sand",
-            Material::Tree => "tree",
-            Material::Lava => "lava",
-            Material::Coal => "coal",
-            Material::Iron => "iron",
-            Material::Diamond => "diamond",
-            Material::Table => "table",
-            Material::Furnace => "furnace",
+    pub fn from_id(id: MaterialId) -> Option<Material> {
+        match id.0 {
+            1 => Some(Material::Water),
+            2 => Some(Material::Grass),
+            3 => Some(Material::Stone),
+            4 => Some(Material::Path),
+            5 => Some(Material::Sand),
+            6 => Some(Material::Tree),
+            7 => Some(Material::Lava),
+            8 => Some(Material::Coal),
+            9 => Some(Material::Iron),
+            10 => Some(Material::Diamond),
+            11 => Some(Material::Table),
+            12 => Some(Material::Furnace),
+            _ => None,
         }
     }
 }
 
+/// Well-known item constants matching the default config order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(usize)]
 pub enum ItemKind {
@@ -270,8 +277,8 @@ impl ItemKind {
         }
     }
 
-    pub(crate) fn texture_name(self) -> &'static str {
-        self.name()
+    pub fn id(self) -> ItemId {
+        ItemId(self as u16)
     }
 }
 
@@ -304,6 +311,7 @@ pub enum Achievement {
 
 pub const ACHIEVEMENT_COUNT: usize = 22;
 
+#[cfg(test)]
 pub const ACHIEVEMENTS: [Achievement; ACHIEVEMENT_COUNT] = [
     Achievement::CollectCoal,
     Achievement::CollectDiamond,
@@ -388,84 +396,95 @@ impl Achievement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inventory {
-    items: [i32; ITEM_COUNT],
+    items: Vec<i32>,
 }
 
 impl Inventory {
-    pub fn new() -> Self {
-        let mut items = [0; ITEM_COUNT];
-        items[ItemKind::Health as usize] = 9;
-        items[ItemKind::Food as usize] = 9;
-        items[ItemKind::Drink as usize] = 9;
-        items[ItemKind::Energy as usize] = 9;
-        Self { items }
+    pub fn new(size: usize) -> Self {
+        Self {
+            items: vec![0; size],
+        }
     }
 
-    pub fn from_initial(initial: &[i32; ITEM_COUNT]) -> Self {
-        Self { items: *initial }
+    pub fn from_initial(initial: &[i32]) -> Self {
+        Self {
+            items: initial.to_vec(),
+        }
     }
 
-    pub fn item(&self, kind: ItemKind) -> i32 {
-        self.items[kind as usize]
+    pub fn item(&self, id: ItemId) -> i32 {
+        self.items[id.0 as usize]
     }
 
-    pub fn set_item(&mut self, kind: ItemKind, value: i32) {
-        self.items[kind as usize] = value;
+    pub fn set_item(&mut self, id: ItemId, value: i32) {
+        self.items[id.0 as usize] = value;
     }
 
-    pub fn add_item(&mut self, kind: ItemKind, delta: i32) {
-        self.items[kind as usize] += delta;
+    pub fn add_item(&mut self, id: ItemId, delta: i32) {
+        self.items[id.0 as usize] += delta;
     }
 
     pub fn clamp(&mut self) {
-        for kind in ITEM_ORDER {
-            self.items[kind as usize] = self.items[kind as usize].clamp(0, 9);
+        for item in self.items.iter_mut() {
+            *item = (*item).clamp(0, 9);
         }
     }
 
-    pub fn clamp_with(&mut self, max: &[i32; ITEM_COUNT]) {
-        for kind in ITEM_ORDER {
-            self.items[kind as usize] = self.items[kind as usize].clamp(0, max[kind as usize]);
+    pub fn clamp_with(&mut self, max: &[i32]) {
+        for (item, max_val) in self.items.iter_mut().zip(max.iter()) {
+            *item = (*item).clamp(0, *max_val);
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn raw(&self) -> &[i32] {
+        &self.items
     }
 }
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self::new()
+        Self::new(ITEM_COUNT)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AchievementProgress {
-    counts: [u32; ACHIEVEMENT_COUNT],
+    counts: Vec<u32>,
 }
 
 impl AchievementProgress {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         Self {
-            counts: [0; ACHIEVEMENT_COUNT],
+            counts: vec![0; size],
         }
     }
 
-    pub fn increment(&mut self, achievement: Achievement) {
-        self.counts[achievement as usize] += 1;
+    pub fn increment(&mut self, index: usize) {
+        self.counts[index] += 1;
     }
 
-    pub fn count(&self, achievement: Achievement) -> u32 {
-        self.counts[achievement as usize]
+    pub fn count(&self, index: usize) -> u32 {
+        self.counts[index]
     }
 
+    pub fn len(&self) -> usize {
+        self.counts.len()
+    }
+
+    /// Check if a named achievement is unlocked (backward compat via Achievement enum).
     pub fn unlocked(&self, name: &str) -> bool {
-        ACHIEVEMENTS
-            .iter()
-            .any(|achievement| achievement.name() == name && self.count(*achievement) > 0)
+        Achievement::from_name(name)
+            .map_or(false, |a| self.counts.get(a as usize).copied().unwrap_or(0) > 0)
     }
 }
 
 impl Default for AchievementProgress {
     fn default() -> Self {
-        Self::new()
+        Self::new(ACHIEVEMENT_COUNT)
     }
 }
 

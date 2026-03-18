@@ -9,7 +9,7 @@ fn render_produces_non_empty_rgb_frame_and_inventory_changes() {
     assert_eq!(obs.channels(), 3);
     assert!(obs.pixels().iter().any(|pixel| *pixel != 0));
 
-    env.player_mut().set_item(ItemKind::Wood, 3);
+    env.player_mut().set_item(ItemKind::Wood.id(), 3);
     let rendered = env.render(None);
     assert_ne!(obs.pixels(), rendered.pixels());
 }
@@ -18,11 +18,12 @@ fn render_produces_non_empty_rgb_frame_and_inventory_changes() {
 fn semantic_view_distinguishes_player_and_hostiles() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     let player = env.player_position();
-    env.world_mut().spawn_skeleton([player[0] + 1, player[1]]);
+    let shealth = env.rules().entity_def(env.rules().entity_type_id("skeleton").unwrap()).health;
+    env.world_mut().spawn_skeleton([player[0] + 1, player[1]], shealth);
     let semantic = env.semantic_view();
     let unique: std::collections::HashSet<_> = semantic.cells().iter().copied().collect();
     assert!(unique.len() >= 3);
@@ -32,7 +33,7 @@ fn semantic_view_distinguishes_player_and_hostiles() {
 fn render_uses_textured_player_sprite_instead_of_flat_block() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     let frame = env.render(Some([144, 144]));
@@ -57,7 +58,7 @@ fn render_uses_textured_player_sprite_instead_of_flat_block() {
 fn night_render_darkens_edges_more_than_inner_tiles() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
 
     env.world_mut().set_daylight(1.0);
@@ -78,7 +79,7 @@ fn night_render_darkens_edges_more_than_inner_tiles() {
 fn night_render_adds_noise_so_identical_tiles_are_not_pixel_identical() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
     env.world_mut().set_daylight(0.0);
 
@@ -92,7 +93,7 @@ fn night_render_adds_noise_so_identical_tiles_are_not_pixel_identical() {
 fn night_render_resamples_noise_between_frames() {
     let mut env = Env::default();
     env.reset();
-    env.world_mut().fill(Material::Grass);
+    env.world_mut().fill(Material::Grass.id());
     env.world_mut().clear_objects();
     env.world_mut().set_daylight(0.0);
 

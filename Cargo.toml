@@ -12,6 +12,7 @@ default = []
 python-module = ["dep:numpy", "dep:pyo3"]
 
 [dependencies]
+indexmap = { version = "2", features = ["serde"] }
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 minifb = "0.28.0"
 numpy = { version = "0.28.0", optional = true }

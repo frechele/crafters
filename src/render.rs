@@ -12,7 +12,7 @@ use crate::{Env, Frame};
 pub fn render(env: &Env, size: Option<[usize; 2]>, noise_index: u64) -> Frame {
     let size = size.unwrap_or(env.config().size);
     let view = env.config().view;
-    let item_rows = crate::ITEM_COUNT.div_ceil(view[0]);
+    let item_rows = env.rules().registry.item_count().div_ceil(view[0]);
     let local_rows = view[1].saturating_sub(item_rows);
     let unit = [(size[0] / view[0]).max(1), (size[1] / view[1]).max(1)];
     let view_pixels = [view[0] * unit[0], view[1] * unit[1]];
@@ -70,7 +70,7 @@ fn draw_local_view(
             let Some(material) = env.world().material([world_x as usize, world_y as usize]) else {
                 continue;
             };
-            let texture = textures.get(material.texture_name(), unit);
+            let texture = textures.get(env.rules().registry.material_name(material), unit);
             draw_texture_opaque(
                 canvas,
                 canvas_size,
@@ -80,10 +80,11 @@ fn draw_local_view(
         }
     }
 
-    for handle in env.world().object_handles() {
-        let Some((pos, _)) = env.world().object_position_and_kind(handle) else {
+    for idx in env.world().entity_handles() {
+        let Some(entity) = env.world().entity(idx) else {
             continue;
         };
+        let pos = entity.pos;
         let rel_x = pos[0] as isize - env.player_position()[0] as isize + x_offset as isize;
         let rel_y = pos[1] as isize - env.player_position()[1] as isize + y_offset as isize;
         if rel_x < 0
@@ -93,10 +94,10 @@ fn draw_local_view(
         {
             continue;
         }
-        let Some(name) = env.world().object_texture_name(handle) else {
+        let Some(name) = env.world().entity_texture_name(idx, env.rules()) else {
             continue;
         };
-        let texture = textures.get(name, unit);
+        let texture = textures.get(&name, unit);
         draw_texture_alpha(
             canvas,
             canvas_size,
@@ -126,8 +127,8 @@ fn draw_item_view(
     let textures = textures();
     let item_size = scaled_unit(unit, 0.8);
     let amount_size = scaled_unit(unit, 0.6);
-    for (index, item) in crate::ITEM_ORDER.into_iter().enumerate() {
-        let amount = env.player().item(item);
+    for (index, item_def) in env.rules().registry.items.iter().enumerate() {
+        let amount = env.player().item(item_def.id);
         if amount < 1 {
             continue;
         }
@@ -140,7 +141,7 @@ fn draw_item_view(
             grid_pos[0] * unit[0] + (unit[0] * 4) / 10,
             grid_pos[1] * unit[1] + (unit[1] * 4) / 10,
         ];
-        let item_texture = textures.get(item.texture_name(), item_size);
+        let item_texture = textures.get(&item_def.name, item_size);
         draw_texture_alpha(canvas, canvas_size, item_pos, item_texture.as_ref());
         let amount_name = amount_texture_name(amount);
         let amount_texture = textures.get(amount_name.as_str(), amount_size);

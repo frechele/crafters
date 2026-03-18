@@ -105,17 +105,17 @@ fn update_title(window: &mut Window, env: &Env, done: bool) {
         format!(
             "Crafter RS | HP {} Food {} Drink {} Energy {} | episode over: press R or any action to reset",
             env.player().health(),
-            env.player().item(ItemKind::Food),
-            env.player().item(ItemKind::Drink),
-            env.player().item(ItemKind::Energy),
+            env.player().item(ItemKind::Food.id()),
+            env.player().item(ItemKind::Drink.id()),
+            env.player().item(ItemKind::Energy.id()),
         )
     } else {
         format!(
             "Crafter RS | HP {} Food {} Drink {} Energy {} | arrows move, space interact, E sleep, 1-4 place, Z/X/C pickaxe, A/S/D sword, N wait, R reset",
             env.player().health(),
-            env.player().item(ItemKind::Food),
-            env.player().item(ItemKind::Drink),
-            env.player().item(ItemKind::Energy),
+            env.player().item(ItemKind::Food.id()),
+            env.player().item(ItemKind::Drink.id()),
+            env.player().item(ItemKind::Energy.id()),
         )
     };
     window.set_title(&title);

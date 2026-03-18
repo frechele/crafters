@@ -4,8 +4,7 @@ use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
 
-use crate::types::ACHIEVEMENTS;
-use crate::{ACTION_NAMES, Env, EnvConfig, GameRules, ITEM_ORDER};
+use crate::{Env, EnvConfig, GameRules};
 
 #[pyclass(name = "RustEnv", unsendable)]
 pub struct PyRustEnv {
@@ -45,7 +44,11 @@ impl PyRustEnv {
 
     #[getter]
     fn action_names(&self) -> Vec<String> {
-        ACTION_NAMES.into_iter().map(str::to_string).collect()
+        self.inner
+            .action_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
     }
 
     #[getter]
@@ -69,11 +72,15 @@ impl PyRustEnv {
     }
 
     fn player_inventory(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        inventory_dict(py, self.inner.player().inventory())
+        inventory_dict(py, self.inner.player().inventory(), &self.inner.rules().registry)
     }
 
     fn player_achievements(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        achievements_dict(py, self.inner.player().achievements())
+        achievements_dict(
+            py,
+            self.inner.player().achievements(),
+            &self.inner.rules().achievement_names,
+        )
     }
 
     fn reset<'py>(&mut self, py: Python<'py>) -> PyResult<Py<PyAny>> {
@@ -92,7 +99,7 @@ impl PyRustEnv {
             .step_index(action)
             .ok_or_else(|| PyIndexError::new_err("action index out of range"))?;
         let observation = frame_to_numpy(py, &result.observation)?;
-        let info = step_info_dict(py, &result.info)?;
+        let info = step_info_dict(py, &result.info, self.inner.rules())?;
         Ok((observation, result.reward, result.done, info))
     }
 
@@ -133,10 +140,14 @@ fn position_to_numpy(py: Python<'_>, position: crate::Position) -> PyResult<Py<P
     Ok(PyArray1::from_owned_array(py, array).into_any().unbind())
 }
 
-fn inventory_dict(py: Python<'_>, inventory: &crate::Inventory) -> PyResult<Py<PyDict>> {
+fn inventory_dict(
+    py: Python<'_>,
+    inventory: &crate::Inventory,
+    registry: &crate::registry::Registry,
+) -> PyResult<Py<PyDict>> {
     let dict = PyDict::new(py);
-    for item in ITEM_ORDER {
-        dict.set_item(item.name(), inventory.item(item))?;
+    for item_def in &registry.items {
+        dict.set_item(&item_def.name, inventory.item(item_def.id))?;
     }
     Ok(dict.unbind())
 }
@@ -144,18 +155,26 @@ fn inventory_dict(py: Python<'_>, inventory: &crate::Inventory) -> PyResult<Py<P
 fn achievements_dict(
     py: Python<'_>,
     achievements: &crate::AchievementProgress,
+    names: &[String],
 ) -> PyResult<Py<PyDict>> {
     let dict = PyDict::new(py);
-    for achievement in ACHIEVEMENTS {
-        dict.set_item(achievement.name(), achievements.count(achievement))?;
+    for (i, name) in names.iter().enumerate() {
+        dict.set_item(name, achievements.count(i))?;
     }
     Ok(dict.unbind())
 }
 
-fn step_info_dict(py: Python<'_>, info: &crate::StepInfo) -> PyResult<Py<PyAny>> {
+fn step_info_dict(
+    py: Python<'_>,
+    info: &crate::StepInfo,
+    rules: &crate::GameRules,
+) -> PyResult<Py<PyAny>> {
     let dict = PyDict::new(py);
-    dict.set_item("inventory", inventory_dict(py, &info.inventory)?)?;
-    dict.set_item("achievements", achievements_dict(py, &info.achievements)?)?;
+    dict.set_item("inventory", inventory_dict(py, &info.inventory, &rules.registry)?)?;
+    dict.set_item(
+        "achievements",
+        achievements_dict(py, &info.achievements, &rules.achievement_names)?,
+    )?;
     dict.set_item("discount", info.discount)?;
     dict.set_item("semantic", semantic_to_numpy(py, &info.semantic)?)?;
     dict.set_item("player_pos", position_to_numpy(py, info.player_pos)?)?;

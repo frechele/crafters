@@ -1,70 +1,19 @@
 use std::collections::HashSet;
 
-use crate::entities::{Arrow, Cow, Fence, Plant, Player, Skeleton, Zombie};
+use crate::entities::{Entity, Player};
+use crate::game_rules::{EntityBehavior, GameRules};
 use crate::py_random::PyRandom;
-use crate::{Direction, Material, Position, SemanticGrid};
-
-macro_rules! object_storage {
-    ($take:ident, $put:ident, $field:ident, $type:ty) => {
-        pub(crate) fn $take(&mut self, idx: usize) -> Option<$type> {
-            self.$field.get_mut(idx)?.take()
-        }
-
-        pub(crate) fn $put(&mut self, idx: usize, value: $type) {
-            if idx >= self.$field.len() {
-                self.$field.resize_with(idx + 1, || None);
-            }
-            self.$field[idx] = Some(value);
-        }
-    };
-}
-
-macro_rules! collect_handles {
-    ($handles:expr, $self:expr, $(($field:ident, $variant:ident)),+) => {
-        $(
-            $handles.extend(
-                $self.$field
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(idx, obj)| obj.as_ref().map(|_| ObjectHandle::$variant(idx))),
-            );
-        )+
-    };
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectHandle {
-    Cow(usize),
-    Zombie(usize),
-    Skeleton(usize),
-    Arrow(usize),
-    Plant(usize),
-    Fence(usize),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectKind {
-    Cow,
-    Zombie,
-    Skeleton,
-    Arrow,
-    Plant,
-    Fence,
-}
+use crate::registry::{EntityTypeId, MaterialId};
+use crate::{Direction, Position, SemanticGrid};
 
 #[derive(Clone, Debug)]
 pub struct World {
     area: [usize; 2],
     chunk_size: [usize; 2],
-    materials: Vec<Option<Material>>,
+    materials: Vec<u16>, // 0 = empty, 1+ = MaterialId
     daylight: f32,
     rng: PyRandom,
-    cows: Vec<Option<Cow>>,
-    zombies: Vec<Option<Zombie>>,
-    skeletons: Vec<Option<Skeleton>>,
-    arrows: Vec<Option<Arrow>>,
-    plants: Vec<Option<Plant>>,
-    fences: Vec<Option<Fence>>,
+    entities: Vec<Option<Entity>>,
 }
 
 impl World {
@@ -72,20 +21,15 @@ impl World {
         Self {
             area,
             chunk_size,
-            materials: vec![None; area[0] * area[1]],
+            materials: vec![0; area[0] * area[1]],
             daylight: 0.0,
             rng: PyRandom::new(0),
-            cows: Vec::new(),
-            zombies: Vec::new(),
-            skeletons: Vec::new(),
-            arrows: Vec::new(),
-            plants: Vec::new(),
-            fences: Vec::new(),
+            entities: Vec::new(),
         }
     }
 
     pub fn reset(&mut self, seed: u64) {
-        self.materials.fill(None);
+        self.materials.fill(0);
         self.daylight = 0.0;
         self.rng = PyRandom::new(seed as u32);
         self.clear_objects();
@@ -99,78 +43,86 @@ impl World {
         self.chunk_size
     }
 
-    pub fn material(&self, pos: Position) -> Option<Material> {
-        self.materials[self.index(pos)]
+    pub fn material(&self, pos: Position) -> Option<MaterialId> {
+        let val = self.materials[self.index(pos)];
+        if val == 0 {
+            None
+        } else {
+            Some(MaterialId(val))
+        }
     }
 
-    pub fn set_material(&mut self, pos: Position, material: Material) {
+    pub fn set_material(&mut self, pos: Position, material: MaterialId) {
         let index = self.index(pos);
-        self.materials[index] = Some(material);
+        self.materials[index] = material.0;
     }
 
-    pub fn fill(&mut self, material: Material) {
-        self.materials.fill(Some(material));
-    }
-
-    pub fn iter_materials(&self) -> impl Iterator<Item = Option<Material>> + '_ {
-        self.materials.iter().copied()
+    pub fn fill(&mut self, material: MaterialId) {
+        self.materials.fill(material.0);
     }
 
     pub fn clear_objects(&mut self) {
-        self.cows.clear();
-        self.zombies.clear();
-        self.skeletons.clear();
-        self.arrows.clear();
-        self.plants.clear();
-        self.fences.clear();
+        self.entities.clear();
     }
 
-    pub fn spawn_cow(&mut self, pos: Position) {
-        if self.object_at(pos, None).is_none() {
-            self.cows.push(Some(Cow::new(pos)));
+    /// Spawn an entity at the given position if the position is not occupied.
+    pub fn spawn_entity(&mut self, pos: Position, type_id: EntityTypeId, health: i32) {
+        if self.entity_at(pos, None).is_none() {
+            self.entities.push(Some(Entity::new(type_id, pos, health)));
         }
     }
 
-    pub fn spawn_zombie(&mut self, pos: Position) {
-        if self.object_at(pos, None).is_none() {
-            self.zombies.push(Some(Zombie::new(pos)));
+    /// Spawn an entity with a specific facing (used for arrows/projectiles).
+    pub fn spawn_entity_facing(&mut self, pos: Position, type_id: EntityTypeId, facing: Direction) {
+        if self.entity_at(pos, None).is_none() {
+            self.entities.push(Some(Entity::with_facing(type_id, pos, facing)));
         }
     }
 
-    pub fn spawn_skeleton(&mut self, pos: Position) {
-        if self.object_at(pos, None).is_none() {
-            self.skeletons.push(Some(Skeleton::new(pos)));
-        }
+    // Legacy convenience methods for tests and external callers
+    pub fn spawn_cow(&mut self, pos: Position, health: i32) {
+        // type_id 0 = cow (first entity in config)
+        self.spawn_entity(pos, EntityTypeId(0), health);
     }
 
-    pub fn spawn_plant(&mut self, pos: Position) {
-        if self.object_at(pos, None).is_none() {
-            self.plants.push(Some(Plant::new(pos)));
-        }
+    pub fn spawn_zombie(&mut self, pos: Position, health: i32) {
+        // type_id 1 = zombie
+        self.spawn_entity(pos, EntityTypeId(1), health);
+    }
+
+    pub fn spawn_skeleton(&mut self, pos: Position, health: i32) {
+        // type_id 2 = skeleton
+        self.spawn_entity(pos, EntityTypeId(2), health);
     }
 
     pub fn spawn_arrow(&mut self, pos: Position, facing: Direction) {
-        if self.object_at(pos, None).is_none() {
-            self.arrows.push(Some(Arrow::new(pos, facing)));
-        }
+        // type_id 3 = arrow
+        self.spawn_entity_facing(pos, EntityTypeId(3), facing);
+    }
+
+    pub fn spawn_plant(&mut self, pos: Position, health: i32, _ripen_time: i32) {
+        // type_id 4 = plant
+        self.spawn_entity(pos, EntityTypeId(4), health);
+    }
+
+    pub fn spawn_fence(&mut self, pos: Position) {
+        // type_id 5 = fence
+        self.spawn_entity(pos, EntityTypeId(5), 0);
     }
 
     pub fn arrow_count(&self) -> usize {
-        self.arrows.iter().flatten().count()
+        self.entities.iter().flatten()
+            .filter(|e| e.type_id == EntityTypeId(3))
+            .count()
     }
 
-    pub fn semantic_view(&self, player: &Player) -> SemanticGrid {
-        let mut cells: Vec<u16> = self
-            .materials
-            .iter()
-            .map(|material| material.map(Material::id).unwrap_or_default())
-            .collect();
-        for handle in self.object_handles() {
-            if let Some((pos, kind)) = self.object_position_and_kind(handle) {
-                cells[self.index(pos)] = semantic_id(kind);
-            }
+    pub fn semantic_view(&self, player: &Player, rules: &GameRules) -> SemanticGrid {
+        let mut cells: Vec<u16> = self.materials.clone();
+        for (_, entity) in self.entity_iter() {
+            let def = rules.entity_def(entity.type_id);
+            cells[self.index(entity.pos)] = def.semantic_id;
         }
-        cells[self.index(player.pos())] = semantic_id_player();
+        cells[self.index(player.pos())] = 13; // player semantic ID
         SemanticGrid::new(self.area[0], self.area[1], cells)
     }
 
@@ -219,93 +171,83 @@ impl World {
             .then_some([next[0] as usize, next[1] as usize])
     }
 
-    pub(crate) fn object_handles(&self) -> Vec<ObjectHandle> {
-        let mut handles = Vec::new();
-        collect_handles!(
-            handles, self,
-            (cows, Cow),
-            (zombies, Zombie),
-            (skeletons, Skeleton),
-            (arrows, Arrow),
-            (plants, Plant),
-            (fences, Fence)
-        );
-        handles
+    /// Returns all live entity handles (indices).
+    pub(crate) fn entity_handles(&self) -> Vec<usize> {
+        self.entities
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, slot)| slot.as_ref().map(|_| idx))
+            .collect()
     }
 
-    pub(crate) fn object_position_and_kind(
-        &self,
-        handle: ObjectHandle,
-    ) -> Option<(Position, ObjectKind)> {
-        match handle {
-            ObjectHandle::Cow(idx) => self
-                .cows
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Cow)),
-            ObjectHandle::Zombie(idx) => self
-                .zombies
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Zombie)),
-            ObjectHandle::Skeleton(idx) => self
-                .skeletons
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Skeleton)),
-            ObjectHandle::Arrow(idx) => self
-                .arrows
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Arrow)),
-            ObjectHandle::Plant(idx) => self
-                .plants
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Plant)),
-            ObjectHandle::Fence(idx) => self
-                .fences
-                .get(idx)?
-                .as_ref()
-                .map(|obj| (obj.pos, ObjectKind::Fence)),
+    /// Iterator over (index, &Entity) for live entities.
+    pub(crate) fn entity_iter(&self) -> impl Iterator<Item = (usize, &Entity)> {
+        self.entities
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, slot)| slot.as_ref().map(|e| (idx, e)))
+    }
+
+    /// Get entity reference by handle.
+    pub(crate) fn entity(&self, idx: usize) -> Option<&Entity> {
+        self.entities.get(idx)?.as_ref()
+    }
+
+    /// Take an entity out for mutation.
+    pub(crate) fn take_entity(&mut self, idx: usize) -> Option<Entity> {
+        self.entities.get_mut(idx)?.take()
+    }
+
+    /// Put an entity back after mutation.
+    pub(crate) fn put_entity(&mut self, idx: usize, entity: Entity) {
+        if idx >= self.entities.len() {
+            self.entities.resize_with(idx + 1, || None);
+        }
+        self.entities[idx] = Some(entity);
+    }
+
+    /// Remove an entity.
+    pub(crate) fn remove_entity(&mut self, idx: usize) {
+        if let Some(slot) = self.entities.get_mut(idx) {
+            *slot = None;
         }
     }
 
-    pub(crate) fn object_texture_name(&self, handle: ObjectHandle) -> Option<&'static str> {
-        match handle {
-            ObjectHandle::Cow(idx) => self.cows.get(idx)?.as_ref().map(|_| "cow"),
-            ObjectHandle::Zombie(idx) => self.zombies.get(idx)?.as_ref().map(|_| "zombie"),
-            ObjectHandle::Skeleton(idx) => self.skeletons.get(idx)?.as_ref().map(|_| "skeleton"),
-            ObjectHandle::Arrow(idx) => self
-                .arrows
-                .get(idx)?
-                .as_ref()
-                .map(crate::entities::Arrow::texture_name),
-            ObjectHandle::Plant(idx) => self
-                .plants
-                .get(idx)?
-                .as_ref()
-                .map(crate::entities::Plant::texture_name),
-            ObjectHandle::Fence(idx) => self.fences.get(idx)?.as_ref().map(|_| "fence"),
-        }
-    }
-
-    pub(crate) fn object_at(
+    /// Find entity at a position, optionally ignoring one handle.
+    pub(crate) fn entity_at(
         &self,
         pos: Position,
-        ignore: Option<ObjectHandle>,
-    ) -> Option<ObjectHandle> {
-        self.object_handles().into_iter().find(|handle| {
-            if Some(*handle) == ignore {
-                return false;
+        ignore: Option<usize>,
+    ) -> Option<usize> {
+        self.entities.iter().enumerate().find_map(|(idx, slot)| {
+            if Some(idx) == ignore {
+                return None;
             }
-            self.object_position_and_kind(*handle)
-                .map(|(object_pos, _)| object_pos == pos)
-                .unwrap_or(false)
+            slot.as_ref().and_then(|e| if e.pos == pos { Some(idx) } else { None })
         })
     }
 
-    pub(crate) fn nearby_materials(&self, pos: Position, distance: usize) -> HashSet<Material> {
+    /// Damage an entity by handle.
+    pub(crate) fn damage_entity(&mut self, idx: usize, amount: i32, rules: &GameRules) {
+        if let Some(Some(entity)) = self.entities.get_mut(idx) {
+            let def = rules.entity_def(entity.type_id);
+            match def.behavior {
+                // Entities with health get damaged
+                EntityBehavior::Passive { .. }
+                | EntityBehavior::Melee { .. }
+                | EntityBehavior::Ranged { .. }
+                | EntityBehavior::Growing { .. } => {
+                    entity.health -= amount;
+                }
+                // Projectiles and statics are just removed
+                EntityBehavior::Projectile { .. } | EntityBehavior::Static => {
+                    self.entities[idx] = None;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn nearby_materials(&self, pos: Position, distance: usize) -> HashSet<MaterialId> {
         let mut result = HashSet::new();
         for x in pos[0].saturating_sub(distance)..=(pos[0] + distance).min(self.area[0] - 1) {
             for y in pos[1].saturating_sub(distance)..=(pos[1] + distance).min(self.area[1] - 1) {
@@ -317,105 +259,60 @@ impl World {
         result
     }
 
-    pub(crate) fn adjacent_object_kinds(&self, pos: Position) -> Vec<ObjectKind> {
+    pub(crate) fn adjacent_entity_types(&self, pos: Position) -> Vec<EntityTypeId> {
         let mut result = Vec::new();
         for direction in Direction::ALL {
             if let Some(target) = self.offset_pos(pos, direction.delta())
-                && let Some(handle) = self.object_at(target, None)
-                && let Some((_, kind)) = self.object_position_and_kind(handle)
+                && let Some(idx) = self.entity_at(target, None)
+                && let Some(entity) = self.entity(idx)
             {
-                result.push(kind);
+                result.push(entity.type_id);
             }
         }
         result
     }
 
-    object_storage!(take_cow, put_cow, cows, Cow);
-    object_storage!(take_zombie, put_zombie, zombies, Zombie);
-    object_storage!(take_skeleton, put_skeleton, skeletons, Skeleton);
-    object_storage!(take_arrow, put_arrow, arrows, Arrow);
-    object_storage!(take_plant, put_plant, plants, Plant);
-    object_storage!(take_fence, put_fence, fences, Fence);
-
-    pub(crate) fn damage_object(&mut self, handle: ObjectHandle, amount: i32) {
-        match handle {
-            ObjectHandle::Cow(idx) => {
-                if let Some(Some(obj)) = self.cows.get_mut(idx) {
-                    obj.health -= amount;
-                }
-            }
-            ObjectHandle::Zombie(idx) => {
-                if let Some(Some(obj)) = self.zombies.get_mut(idx) {
-                    obj.health -= amount;
-                }
-            }
-            ObjectHandle::Skeleton(idx) => {
-                if let Some(Some(obj)) = self.skeletons.get_mut(idx) {
-                    obj.health -= amount;
-                }
-            }
-            ObjectHandle::Plant(idx) => {
-                if let Some(Some(obj)) = self.plants.get_mut(idx) {
-                    obj.health -= amount;
-                }
-            }
-            ObjectHandle::Arrow(idx) => {
-                self.remove_object(ObjectHandle::Arrow(idx));
-            }
-            ObjectHandle::Fence(idx) => {
-                self.remove_object(ObjectHandle::Fence(idx));
-            }
-        }
-    }
-
-    pub(crate) fn remove_object(&mut self, handle: ObjectHandle) {
-        macro_rules! remove {
-            ($field:ident, $idx:expr) => {
-                if let Some(slot) = self.$field.get_mut($idx) {
-                    *slot = None;
-                }
-            };
-        }
-        match handle {
-            ObjectHandle::Cow(idx) => remove!(cows, idx),
-            ObjectHandle::Zombie(idx) => remove!(zombies, idx),
-            ObjectHandle::Skeleton(idx) => remove!(skeletons, idx),
-            ObjectHandle::Arrow(idx) => remove!(arrows, idx),
-            ObjectHandle::Plant(idx) => remove!(plants, idx),
-            ObjectHandle::Fence(idx) => remove!(fences, idx),
-        }
-    }
-
     pub(crate) fn is_free_for(
         &self,
         pos: Position,
-        walkable: &[Material],
+        walkable: &[MaterialId],
         player_pos: Position,
-        ignore: Option<ObjectHandle>,
+        ignore: Option<usize>,
     ) -> bool {
         self.material(pos)
             .map(|material| walkable.contains(&material))
             .unwrap_or(false)
-            && self.object_at(pos, ignore).is_none()
+            && self.entity_at(pos, ignore).is_none()
             && pos != player_pos
+    }
+
+    /// Get texture name for an entity (used by render).
+    pub(crate) fn entity_texture_name(&self, idx: usize, rules: &GameRules) -> Option<String> {
+        let entity = self.entity(idx)?;
+        let def = rules.entity_def(entity.type_id);
+        match &def.behavior {
+            EntityBehavior::Projectile { .. } => {
+                // Arrow-like: append facing direction
+                let facing = match entity.facing {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                Some(format!("{}-{}", def.name, facing))
+            }
+            EntityBehavior::Growing { ripen_time } => {
+                if entity.timer > *ripen_time {
+                    Some(format!("{}-ripe", def.name))
+                } else {
+                    Some(def.name.clone())
+                }
+            }
+            _ => Some(def.name.clone()),
+        }
     }
 
     fn index(&self, pos: Position) -> usize {
         pos[0] * self.area[1] + pos[1]
     }
-}
-
-fn semantic_id(kind: ObjectKind) -> u16 {
-    match kind {
-        ObjectKind::Cow => 14,
-        ObjectKind::Zombie => 15,
-        ObjectKind::Skeleton => 16,
-        ObjectKind::Arrow => 17,
-        ObjectKind::Plant => 18,
-        ObjectKind::Fence => 19,
-    }
-}
-
-fn semantic_id_player() -> u16 {
-    13
 }

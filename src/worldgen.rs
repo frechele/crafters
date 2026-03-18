@@ -1,7 +1,9 @@
+use crate::game_rules::GameRules;
 use crate::opensimplex::OpenSimplexNoise;
+use crate::registry::MaterialId;
 use crate::{Material, Position, World};
 
-pub fn generate_world(world: &mut World, player_pos: Position) {
+pub fn generate_world(world: &mut World, player_pos: Position, rules: &GameRules) {
     let simplex = OpenSimplexNoise::new(world.random_i64((1_i64 << 31) - 1));
     let mut tunnels = vec![false; world.area()[0] * world.area()[1]];
     for x in 0..world.area()[0] {
@@ -11,7 +13,7 @@ pub fn generate_world(world: &mut World, player_pos: Position) {
     }
     for x in 0..world.area()[0] {
         for y in 0..world.area()[1] {
-            set_object(world, [x, y], player_pos, &tunnels);
+            set_object(world, [x, y], player_pos, &tunnels, rules);
         }
     }
 }
@@ -38,44 +40,44 @@ fn set_material(
     let mut mountain = simplex_sum(simplex, x, y, 0.0, &[(15.0, 1.0), (5.0, 0.3)], true);
     mountain -= 4.0 * start + 0.3 * water;
 
-    let material = if start > 0.5 {
-        Material::Grass
+    let material: MaterialId = if start > 0.5 {
+        Material::Grass.id()
     } else if mountain > 0.15 {
         if simplex_sum(simplex, x, y, 6.0, &[(7.0, 1.0)], true) > 0.15 && mountain > 0.3 {
-            Material::Path
+            Material::Path.id()
         } else if simplex_sum(simplex, 2.0 * x, y / 5.0, 7.0, &[(3.0, 1.0)], true) > 0.4
             || simplex_sum(simplex, x / 5.0, 2.0 * y, 7.0, &[(3.0, 1.0)], true) > 0.4
         {
             tunnels[index(world.area(), pos)] = true;
-            Material::Path
+            Material::Path.id()
         } else if simplex_sum(simplex, x, y, 1.0, &[(8.0, 1.0)], true) > 0.0
             && world.random_f64() > 0.85
         {
-            Material::Coal
+            Material::Coal.id()
         } else if simplex_sum(simplex, x, y, 2.0, &[(6.0, 1.0)], true) > 0.4
             && world.random_f64() > 0.75
         {
-            Material::Iron
+            Material::Iron.id()
         } else if mountain > 0.18 && world.random_f64() > 0.994 {
-            Material::Diamond
+            Material::Diamond.id()
         } else if mountain > 0.3 && simplex_sum(simplex, x, y, 6.0, &[(5.0, 1.0)], true) > 0.35 {
-            Material::Lava
+            Material::Lava.id()
         } else {
-            Material::Stone
+            Material::Stone.id()
         }
     } else if water > 0.25
         && water <= 0.35
         && simplex_sum(simplex, x, y, 4.0, &[(9.0, 1.0)], true) > -0.2
     {
-        Material::Sand
+        Material::Sand.id()
     } else if water > 0.3 {
-        Material::Water
+        Material::Water.id()
     } else if simplex_sum(simplex, x, y, 5.0, &[(7.0, 1.0)], true) > 0.0
         && world.random_f64() > 0.8
     {
-        Material::Tree
+        Material::Tree.id()
     } else {
-        Material::Grass
+        Material::Grass.id()
     };
     world.set_material(pos, material);
 }
@@ -105,23 +107,46 @@ fn index(area: [usize; 2], pos: Position) -> usize {
     pos[0] * area[1] + pos[1]
 }
 
-fn set_object(world: &mut World, pos: Position, player_pos: Position, tunnels: &[bool]) {
+fn set_object(
+    world: &mut World,
+    pos: Position,
+    player_pos: Position,
+    tunnels: &[bool],
+    rules: &GameRules,
+) {
     let dist = distance(pos, player_pos);
     let Some(material) = world.material(pos) else {
         return;
     };
-    if !material.is_walkable() {
+    let walkable = Material::from_id(material).map_or(false, |m| m.is_walkable());
+    if !walkable {
         return;
     }
-    if dist > 3.0 && material == Material::Grass && world.random_f64() > 0.985 {
-        world.spawn_cow(pos);
-    } else if dist > 10.0 && world.random_f64() > 0.993 {
-        world.spawn_zombie(pos);
-    } else if material == Material::Path
-        && tunnels[index(world.area(), pos)]
-        && world.random_f64() > 0.95
-    {
-        world.spawn_skeleton(pos);
+
+    // Iterate over entity types that have worldgen config
+    for def in &rules.entity_defs {
+        let Some(ref wg) = def.worldgen else {
+            continue;
+        };
+        // Check minimum distance from player
+        if dist <= wg.min_dist {
+            continue;
+        }
+        // Check material requirement
+        if let Some(ref mat) = wg.material {
+            if material != *mat {
+                continue;
+            }
+        }
+        // Check tunnel-only requirement
+        if wg.tunnel_only && !tunnels[index(world.area(), pos)] {
+            continue;
+        }
+        // Check threshold
+        if world.random_f64() > wg.threshold {
+            world.spawn_entity(pos, def.type_id, def.health);
+            return;
+        }
     }
 }
 

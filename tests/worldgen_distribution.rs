@@ -10,11 +10,18 @@ fn worldgen_has_meaningful_path_and_iron_density_on_reference_seed() {
 
     let mut path = 0usize;
     let mut iron = 0usize;
-    for material in env.world().iter_materials().flatten() {
-        match material {
-            Material::Path => path += 1,
-            Material::Iron => iron += 1,
-            _ => {}
+    let area = env.world().area();
+    let path_id = Material::Path.id();
+    let iron_id = Material::Iron.id();
+    for x in 0..area[0] {
+        for y in 0..area[1] {
+            if let Some(mid) = env.world().material([x, y]) {
+                if mid == path_id {
+                    path += 1;
+                } else if mid == iron_id {
+                    iron += 1;
+                }
+            }
         }
     }
 
