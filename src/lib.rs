@@ -1,5 +1,6 @@
 mod config;
 mod entities;
+mod game_rules;
 mod opensimplex;
 mod pillow_resize_16;
 mod py_random;
@@ -19,6 +20,7 @@ use pyo3::prelude::*;
 
 pub use config::EnvConfig;
 pub use entities::{Arrow, Cow, Fence, Plant, Player, Skeleton, Zombie};
+pub use game_rules::GameRules;
 pub use runner::{RunnerKey, runner_action_from_keys, runner_frame_to_buffer};
 pub use types::{
     ACTION_NAMES, ACTIONS, Achievement, AchievementProgress, Action, Direction, Frame, ITEM_COUNT,
@@ -26,6 +28,7 @@ pub use types::{
 };
 pub use world::World;
 
+use crate::game_rules::PlaceType;
 use crate::world::{ObjectHandle, ObjectKind};
 
 const WALKABLE: [Material; 3] = [Material::Grass, Material::Path, Material::Sand];
@@ -47,6 +50,7 @@ type ChunkKey = (usize, usize, usize, usize);
 #[derive(Clone, Debug)]
 pub struct Env {
     config: EnvConfig,
+    rules: GameRules,
     episode: u64,
     step_count: u32,
     render_count: Cell<u64>,
@@ -58,11 +62,17 @@ pub struct Env {
 
 impl Env {
     pub fn new(config: EnvConfig) -> Self {
+        Self::with_rules(config, GameRules::default())
+    }
+
+    pub fn with_rules(config: EnvConfig, rules: GameRules) -> Self {
         let center = [config.area[0] / 2, config.area[1] / 2];
-        let player = Player::new(center);
+        let inventory = Inventory::from_initial(&rules.item_initial);
+        let player = Player::with_inventory(center, inventory);
         Self {
             world: World::new(config.area, [12, 12]),
             config,
+            rules,
             episode: 0,
             step_count: 0,
             render_count: Cell::new(0),
@@ -70,6 +80,10 @@ impl Env {
             player,
             unlocked: HashSet::new(),
         }
+    }
+
+    pub fn rules(&self) -> &GameRules {
+        &self.rules
     }
 
     pub fn reset(&mut self) -> Frame {
@@ -80,7 +94,8 @@ impl Env {
         self.world
             .reset(episode_seed(self.config.seed, self.episode));
         self.update_time();
-        self.player = Player::new(center);
+        let inventory = Inventory::from_initial(&self.rules.item_initial);
+        self.player = Player::with_inventory(center, inventory);
         self.last_health = self.player.health();
         self.unlocked.clear();
         worldgen::generate_world(&mut self.world, center);
@@ -228,59 +243,21 @@ impl Env {
                     self.player.set_sleeping(true);
                 }
             }
-            Action::PlaceStone => self.place_item(Material::Stone),
-            Action::PlaceTable => self.place_item(Material::Table),
-            Action::PlaceFurnace => self.place_item(Material::Furnace),
-            Action::PlacePlant => self.place_plant(),
-            Action::MakeWoodPickaxe => self.make_item(
-                ItemKind::WoodPickaxe,
-                &[(ItemKind::Wood, 1)],
-                &[Material::Table],
-                1,
-            ),
-            Action::MakeStonePickaxe => self.make_item(
-                ItemKind::StonePickaxe,
-                &[(ItemKind::Wood, 1), (ItemKind::Stone, 1)],
-                &[Material::Table],
-                1,
-            ),
-            Action::MakeIronPickaxe => self.make_item(
-                ItemKind::IronPickaxe,
-                &[
-                    (ItemKind::Wood, 1),
-                    (ItemKind::Coal, 1),
-                    (ItemKind::Iron, 1),
-                ],
-                &[Material::Table, Material::Furnace],
-                1,
-            ),
-            Action::MakeWoodSword => self.make_item(
-                ItemKind::WoodSword,
-                &[(ItemKind::Wood, 1)],
-                &[Material::Table],
-                1,
-            ),
-            Action::MakeStoneSword => self.make_item(
-                ItemKind::StoneSword,
-                &[(ItemKind::Wood, 1), (ItemKind::Stone, 1)],
-                &[Material::Table],
-                1,
-            ),
-            Action::MakeIronSword => self.make_item(
-                ItemKind::IronSword,
-                &[
-                    (ItemKind::Wood, 1),
-                    (ItemKind::Coal, 1),
-                    (ItemKind::Iron, 1),
-                ],
-                &[Material::Table, Material::Furnace],
-                1,
-            ),
+            Action::PlaceStone => self.place_by_name("stone"),
+            Action::PlaceTable => self.place_by_name("table"),
+            Action::PlaceFurnace => self.place_by_name("furnace"),
+            Action::PlacePlant => self.place_by_name("plant"),
+            Action::MakeWoodPickaxe => self.make_from_rules(ItemKind::WoodPickaxe),
+            Action::MakeStonePickaxe => self.make_from_rules(ItemKind::StonePickaxe),
+            Action::MakeIronPickaxe => self.make_from_rules(ItemKind::IronPickaxe),
+            Action::MakeWoodSword => self.make_from_rules(ItemKind::WoodSword),
+            Action::MakeStoneSword => self.make_from_rules(ItemKind::StoneSword),
+            Action::MakeIronSword => self.make_from_rules(ItemKind::IronSword),
         }
 
         self.update_life_stats();
         self.degen_or_regen_health();
-        self.player.clamp_inventory();
+        self.player.inventory_mut().clamp_with(&self.rules.item_max);
         self.wake_up_when_hurt();
     }
 
@@ -387,47 +364,36 @@ impl Env {
     }
 
     fn do_material(&mut self, target: Position, material: Material) {
+        // Special behavior: interacting with water resets thirst
         if material == Material::Water {
             *self.player.thirst_mut() = 0.0;
         }
-        match material {
-            Material::Tree => {
-                self.world.set_material(target, Material::Grass);
-                self.collect(ItemKind::Wood, Achievement::CollectWood);
+        let Some(rule) = self.rules.collect.get(&material).cloned() else {
+            return;
+        };
+        // Check requirements
+        for &(kind, amount) in &rule.require {
+            if self.player.item(kind) < amount {
+                return;
             }
-            Material::Stone if self.player.item(ItemKind::WoodPickaxe) >= 1 => {
-                self.mine(target, ItemKind::Stone, Achievement::CollectStone);
-            }
-            Material::Coal if self.player.item(ItemKind::WoodPickaxe) >= 1 => {
-                self.mine(target, ItemKind::Coal, Achievement::CollectCoal);
-            }
-            Material::Iron if self.player.item(ItemKind::StonePickaxe) >= 1 => {
-                self.mine(target, ItemKind::Iron, Achievement::CollectIron);
-            }
-            Material::Diamond if self.player.item(ItemKind::IronPickaxe) >= 1 => {
-                self.mine(target, ItemKind::Diamond, Achievement::CollectDiamond);
-            }
-            Material::Water => {
-                self.collect(ItemKind::Drink, Achievement::CollectDrink);
-            }
-            Material::Grass if self.world.random_f32() <= 0.1 => {
-                self.collect(ItemKind::Sapling, Achievement::CollectSapling);
-            }
-            _ => {}
         }
+        // Check probability
+        if rule.probability < 1.0 && self.world.random_f32() > rule.probability {
+            return;
+        }
+        // Transform material
+        self.world.set_material(target, rule.leaves);
+        // Give items and record achievement
+        for &(kind, amount) in &rule.receive {
+            self.player.inventory_mut().add_item(kind, amount);
+        }
+        self.player.achievements_mut().increment(rule.achievement);
     }
 
-    fn mine(&mut self, target: Position, item: ItemKind, achievement: Achievement) {
-        self.world.set_material(target, Material::Path);
-        self.collect(item, achievement);
-    }
-
-    fn collect(&mut self, item: ItemKind, achievement: Achievement) {
-        self.player.inventory_mut().add_item(item, 1);
-        self.player.achievements_mut().increment(achievement);
-    }
-
-    fn place_item(&mut self, material: Material) {
+    fn place_by_name(&mut self, name: &str) {
+        let Some(rule) = self.rules.place.get(name).cloned() else {
+            return;
+        };
         let Some(target) = self
             .world
             .offset_pos(self.player.pos(), self.player.facing().delta())
@@ -440,110 +406,55 @@ impl Env {
         let Some(target_material) = self.world.material(target) else {
             return;
         };
-        match material {
-            Material::Stone => {
-                if !matches!(
-                    target_material,
-                    Material::Grass
-                        | Material::Sand
-                        | Material::Path
-                        | Material::Water
-                        | Material::Lava
-                ) || self.player.item(ItemKind::Stone) < 1
-                {
-                    return;
-                }
-                self.player.inventory_mut().add_item(ItemKind::Stone, -1);
-                self.world.set_material(target, Material::Stone);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::PlaceStone);
-            }
-            Material::Table => {
-                if !matches!(
-                    target_material,
-                    Material::Grass | Material::Sand | Material::Path
-                ) || self.player.item(ItemKind::Wood) < 2
-                {
-                    return;
-                }
-                self.player.inventory_mut().add_item(ItemKind::Wood, -2);
-                self.world.set_material(target, Material::Table);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::PlaceTable);
-            }
-            Material::Furnace => {
-                if !matches!(
-                    target_material,
-                    Material::Grass | Material::Sand | Material::Path
-                ) || self.player.item(ItemKind::Stone) < 4
-                {
-                    return;
-                }
-                self.player.inventory_mut().add_item(ItemKind::Stone, -4);
-                self.world.set_material(target, Material::Furnace);
-                self.player
-                    .achievements_mut()
-                    .increment(Achievement::PlaceFurnace);
-            }
-            _ => {}
+        if !rule.where_materials.contains(&target_material) {
+            return;
         }
+        // Check resource cost
+        for &(kind, amount) in &rule.uses {
+            if self.player.item(kind) < amount {
+                return;
+            }
+        }
+        // Deduct resources
+        for &(kind, amount) in &rule.uses {
+            self.player.inventory_mut().add_item(kind, -amount);
+        }
+        // Place
+        match rule.place_type {
+            PlaceType::Material => {
+                if let Some(material) = rule.placed_material {
+                    self.world.set_material(target, material);
+                }
+            }
+            PlaceType::Object => {
+                self.world.spawn_plant(target);
+            }
+        }
+        self.player.achievements_mut().increment(rule.achievement);
     }
 
-    fn place_plant(&mut self) {
-        let Some(target) = self
-            .world
-            .offset_pos(self.player.pos(), self.player.facing().delta())
-        else {
+    fn make_from_rules(&mut self, item: ItemKind) {
+        let Some(rule) = self.rules.make.get(&item).cloned() else {
             return;
         };
-        if self.world.object_at(target, None).is_some()
-            || self.world.material(target) != Some(Material::Grass)
-            || self.player.item(ItemKind::Sapling) < 1
-        {
-            return;
-        }
-        self.player.inventory_mut().add_item(ItemKind::Sapling, -1);
-        self.world.spawn_plant(target);
-        self.player
-            .achievements_mut()
-            .increment(Achievement::PlacePlant);
-    }
-
-    fn make_item(
-        &mut self,
-        item: ItemKind,
-        uses: &[(ItemKind, i32)],
-        nearby: &[Material],
-        gives: i32,
-    ) {
         let nearby_materials = self.world.nearby_materials(self.player.pos(), 1);
-        if !nearby
+        if !rule
+            .nearby
             .iter()
             .all(|material| nearby_materials.contains(material))
         {
             return;
         }
-        if uses
-            .iter()
-            .any(|(kind, amount)| self.player.item(*kind) < *amount)
-        {
-            return;
+        for &(kind, amount) in &rule.uses {
+            if self.player.item(kind) < amount {
+                return;
+            }
         }
-        for (kind, amount) in uses {
-            self.player.inventory_mut().add_item(*kind, -*amount);
+        for &(kind, amount) in &rule.uses {
+            self.player.inventory_mut().add_item(kind, -amount);
         }
-        self.player.inventory_mut().add_item(item, gives);
-        self.player.achievements_mut().increment(match item {
-            ItemKind::WoodPickaxe => Achievement::MakeWoodPickaxe,
-            ItemKind::StonePickaxe => Achievement::MakeStonePickaxe,
-            ItemKind::IronPickaxe => Achievement::MakeIronPickaxe,
-            ItemKind::WoodSword => Achievement::MakeWoodSword,
-            ItemKind::StoneSword => Achievement::MakeStoneSword,
-            ItemKind::IronSword => Achievement::MakeIronSword,
-            _ => return,
-        });
+        self.player.inventory_mut().add_item(item, rule.gives);
+        self.player.achievements_mut().increment(rule.achievement);
     }
 
     fn update_life_stats(&mut self) {

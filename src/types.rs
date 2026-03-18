@@ -125,6 +125,24 @@ pub enum Material {
 }
 
 impl Material {
+    pub fn from_name(name: &str) -> Option<Material> {
+        match name {
+            "water" => Some(Material::Water),
+            "grass" => Some(Material::Grass),
+            "stone" => Some(Material::Stone),
+            "path" => Some(Material::Path),
+            "sand" => Some(Material::Sand),
+            "tree" => Some(Material::Tree),
+            "lava" => Some(Material::Lava),
+            "coal" => Some(Material::Coal),
+            "iron" => Some(Material::Iron),
+            "diamond" => Some(Material::Diamond),
+            "table" => Some(Material::Table),
+            "furnace" => Some(Material::Furnace),
+            _ => None,
+        }
+    }
+
     pub const ALL: [Material; 12] = [
         Material::Water,
         Material::Grass,
@@ -209,6 +227,28 @@ pub const ITEM_ORDER: [ItemKind; ITEM_COUNT] = [
 ];
 
 impl ItemKind {
+    pub fn from_name(name: &str) -> Option<ItemKind> {
+        match name {
+            "health" => Some(ItemKind::Health),
+            "food" => Some(ItemKind::Food),
+            "drink" => Some(ItemKind::Drink),
+            "energy" => Some(ItemKind::Energy),
+            "sapling" => Some(ItemKind::Sapling),
+            "wood" => Some(ItemKind::Wood),
+            "stone" => Some(ItemKind::Stone),
+            "coal" => Some(ItemKind::Coal),
+            "iron" => Some(ItemKind::Iron),
+            "diamond" => Some(ItemKind::Diamond),
+            "wood_pickaxe" => Some(ItemKind::WoodPickaxe),
+            "stone_pickaxe" => Some(ItemKind::StonePickaxe),
+            "iron_pickaxe" => Some(ItemKind::IronPickaxe),
+            "wood_sword" => Some(ItemKind::WoodSword),
+            "stone_sword" => Some(ItemKind::StoneSword),
+            "iron_sword" => Some(ItemKind::IronSword),
+            _ => None,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             ItemKind::Health => "health",
@@ -290,6 +330,34 @@ pub const ACHIEVEMENTS: [Achievement; ACHIEVEMENT_COUNT] = [
 ];
 
 impl Achievement {
+    pub fn from_name(name: &str) -> Option<Achievement> {
+        match name {
+            "collect_coal" => Some(Achievement::CollectCoal),
+            "collect_diamond" => Some(Achievement::CollectDiamond),
+            "collect_drink" => Some(Achievement::CollectDrink),
+            "collect_iron" => Some(Achievement::CollectIron),
+            "collect_sapling" => Some(Achievement::CollectSapling),
+            "collect_stone" => Some(Achievement::CollectStone),
+            "collect_wood" => Some(Achievement::CollectWood),
+            "defeat_skeleton" => Some(Achievement::DefeatSkeleton),
+            "defeat_zombie" => Some(Achievement::DefeatZombie),
+            "eat_cow" => Some(Achievement::EatCow),
+            "eat_plant" => Some(Achievement::EatPlant),
+            "make_iron_pickaxe" => Some(Achievement::MakeIronPickaxe),
+            "make_iron_sword" => Some(Achievement::MakeIronSword),
+            "make_stone_pickaxe" => Some(Achievement::MakeStonePickaxe),
+            "make_stone_sword" => Some(Achievement::MakeStoneSword),
+            "make_wood_pickaxe" => Some(Achievement::MakeWoodPickaxe),
+            "make_wood_sword" => Some(Achievement::MakeWoodSword),
+            "place_furnace" => Some(Achievement::PlaceFurnace),
+            "place_plant" => Some(Achievement::PlacePlant),
+            "place_stone" => Some(Achievement::PlaceStone),
+            "place_table" => Some(Achievement::PlaceTable),
+            "wake_up" => Some(Achievement::WakeUp),
+            _ => None,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Achievement::CollectCoal => "collect_coal",
@@ -333,6 +401,10 @@ impl Inventory {
         Self { items }
     }
 
+    pub fn from_initial(initial: &[i32; ITEM_COUNT]) -> Self {
+        Self { items: *initial }
+    }
+
     pub fn item(&self, kind: ItemKind) -> i32 {
         self.items[kind as usize]
     }
@@ -348,6 +420,12 @@ impl Inventory {
     pub fn clamp(&mut self) {
         for kind in ITEM_ORDER {
             self.items[kind as usize] = self.items[kind as usize].clamp(0, 9);
+        }
+    }
+
+    pub fn clamp_with(&mut self, max: &[i32; ITEM_COUNT]) {
+        for kind in ITEM_ORDER {
+            self.items[kind as usize] = self.items[kind as usize].clamp(0, max[kind as usize]);
         }
     }
 }

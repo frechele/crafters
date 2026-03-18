@@ -17,7 +17,10 @@ pub struct Player {
 
 impl Player {
     pub fn new(pos: Position) -> Self {
-        let inventory = Inventory::new();
+        Self::with_inventory(pos, Inventory::new())
+    }
+
+    pub fn with_inventory(pos: Position, inventory: Inventory) -> Self {
         let last_health = inventory.item(crate::ItemKind::Health);
         Self {
             pos,

@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
 
 use crate::types::ACHIEVEMENTS;
-use crate::{ACTION_NAMES, Env, EnvConfig, ITEM_ORDER};
+use crate::{ACTION_NAMES, Env, EnvConfig, GameRules, ITEM_ORDER};
 
 #[pyclass(name = "RustEnv", unsendable)]
 pub struct PyRustEnv {
@@ -15,7 +15,7 @@ pub struct PyRustEnv {
 #[pymethods]
 impl PyRustEnv {
     #[new]
-    #[pyo3(signature = (area=(64, 64), view=(9, 9), size=(64, 64), reward=true, length=Some(10_000), seed=0))]
+    #[pyo3(signature = (area=(64, 64), view=(9, 9), size=(64, 64), reward=true, length=Some(10_000), seed=0, rules_yaml=None))]
     fn new(
         area: (usize, usize),
         view: (usize, usize),
@@ -23,7 +23,8 @@ impl PyRustEnv {
         reward: bool,
         length: Option<u32>,
         seed: u64,
-    ) -> Self {
+        rules_yaml: Option<String>,
+    ) -> PyResult<Self> {
         let config = EnvConfig {
             area: [area.0, area.1],
             view: [view.0, view.1],
@@ -32,9 +33,14 @@ impl PyRustEnv {
             length,
             seed,
         };
-        Self {
-            inner: Env::new(config),
-        }
+        let rules = match rules_yaml {
+            Some(yaml) => GameRules::from_yaml(&yaml)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+            None => GameRules::default(),
+        };
+        Ok(Self {
+            inner: Env::with_rules(config, rules),
+        })
     }
 
     #[getter]

@@ -17,8 +17,9 @@ minifb = "0.28.0"
 numpy = { version = "0.28.0", optional = true }
 pyo3 = { version = "0.28.2", optional = true, features = ["extension-module"] }
 rand_mt = "6.0.2"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
 
 [dev-dependencies]
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
